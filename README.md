@@ -282,7 +282,8 @@ integridad de cuarentena, logging, allowlist, backend de tiempo real, límites d
 configuración, ubicación de `home` e IOCs mínimos). Devuelve `0` si todo pasa y
 `2` si hay fallos; con la base incluida, firmada y con su clave pública, el
 resultado es **100/100**. El detalle y las remediations están en
-`docs/THREAT_MODEL.md`.
+`docs/THREAT_MODEL.md`; el alcance para una revisión independiente está en
+`docs/EXTERNAL_AUDIT_SCOPE.md`.
 
 `sentinel integrity build/verify` genera y comprueba un manifiesto SHA-256.
 `verify` distingue `missing`, `modified` y `added`, y con `--public-key`
@@ -322,7 +323,8 @@ externa:
 * Filtro de sistema de archivos a nivel kernel: el monitor es de modo usuario y
   puede perder eventos si se desborda el buffer de 64 KiB. La arquitectura
   propuesta está en `docs/KERNEL_FILTER_DESIGN.md`; no incluye código de driver.
-* Auditoría externa independiente: `sentinel audit` es una autoevaluación.
+* Auditoría externa independiente: `sentinel audit` es una autoevaluación. El
+  alcance propuesto está en `docs/EXTERNAL_AUDIT_SCOPE.md`.
 * Certificado Authenticode EV/OV: aquí solo se usó un certificado autofirmado
   para validar el proceso. Confiándolo temporalmente solo al usuario se consiguió
   `signtool verify /pa` con 0 errores; se retiró inmediatamente después. Sin esa

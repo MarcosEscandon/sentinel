@@ -155,7 +155,8 @@ sentinel audit
 Las excepciones se convierten en fallos con el mensaje en `detail`; la
 puntuación es el porcentaje de checks superados. **Un 100/100 no implica que
 el equipo esté libre de malware**: solo dice que estos controles están
-presentes y son coherentes.
+presentes y son coherentes. El alcance de una revisión independiente está en
+`docs/EXTERNAL_AUDIT_SCOPE.md`.
 
 ## Análisis estático del código
 
@@ -211,5 +212,7 @@ fallos lógicos ni garantiza la seguridad del producto.
       cuarentena, y comprobar que no se generan falsos positivos inaceptables.
 - [ ] Seguir `docs/EV_OV_HANDOFF.md` para obtener el certificado EV/OV, firmar
       el release y coordinar la regla de AppLocker/WDAC; adjuntar la evidencia.
+- [ ] Contratar la auditoría externa con `docs/EXTERNAL_AUDIT_SCOPE.md` y cerrar
+      los hallazgos con prueba de regresión antes de aceptar el informe.
 - [ ] Registrar como pendientes el filtro de kernel, la desofuscación
       arbitraria de macros y la rotación de claves de firmas.
