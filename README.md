@@ -329,7 +329,8 @@ externa:
   este equipo, además, **Device Guard bloqueó el exe recién compilado** por no
   provenir de una CA de confianza; el build y su smoke test interno pasaron, pero
   la validación final se hizo con la CLI de Python. Un certificado EV/OV real
-  debería resolver este bloqueo.
+  debería resolver este bloqueo; el procedimiento de emisión, firma y confianza
+  está en `docs/EV_OV_HANDOFF.md`.
 * Instalación del servicio de Windows: necesita administrador (abre UAC). Se
   validó `service run` en primer plano y, ya corregidos el home persistido y el
   `StopEvent` de pywin32 312, que el servicio instalado llega a `Running`.

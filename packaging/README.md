@@ -150,7 +150,9 @@ completa añadiendo temporalmente el certificado al almacén `Root` de
 (1 archivo, 0 errores). El certificado se retiró justo después con
 `certutil -user -delstore Root <thumbprint>` y se comprobó que no seguía en el
 almacén. Para producción usa un certificado EV/OV de una CA pública: **no
-confíes un certificado de prueba en un equipo real**.
+confíes un certificado de prueba en un equipo real**. El procedimiento completo
+de emisión, firma y reglas de AppLocker/WDAC está en
+`docs/EV_OV_HANDOFF.md`.
 
 ## 4. Símbolos (PDB) opcionales
 

@@ -208,5 +208,7 @@ fallos lógicos ni garantiza la seguridad del producto.
       servicio se ejecuta con la cuenta mínima necesaria.
 - [ ] Probar EICAR en un entorno aislado, incluida la restauración desde
       cuarentena, y comprobar que no se generan falsos positivos inaceptables.
-- [ ] Registrar como pendientes el filtro de kernel, Authenticode, la
-      desofuscación arbitraria de macros y la rotación de claves de firmas.
+- [ ] Seguir `docs/EV_OV_HANDOFF.md` para obtener el certificado EV/OV, firmar
+      el release y coordinar la regla de AppLocker/WDAC; adjuntar la evidencia.
+- [ ] Registrar como pendientes el filtro de kernel, la desofuscación
+      arbitraria de macros y la rotación de claves de firmas.
