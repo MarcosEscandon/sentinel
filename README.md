@@ -38,8 +38,10 @@ pip install -e ".[yara]"                           # opcional: reglas YARA
 pip install -e ".[service]"                        # opcional: servicio de Windows
 ```
 
-`signing` y `hardening` son obligatorios para actualizar firmas de forma segura.
-Sin `regex`, las reglas de contenido funcionan pero no tienen límite de tiempo.
+`signing` (`cryptography`) es obligatorio para verificar la firma Ed25519 en
+actualizaciones. `hardening` añade un límite de tiempo a las reglas de contenido,
+pero no es requisito de `sentinel signatures update`. Sin `regex`, las reglas de
+contenido funcionan pero no tienen límite de tiempo.
 Sin `watchdog`, la monitorización usa el backend nativo de Windows
 (`ReadDirectoryChangesW` vía `ctypes`) y, si ese tampoco está disponible,
 sondeo (`polling`) sin dependencias.
@@ -75,8 +77,8 @@ sentinel signatures validate
 
 # Autoevaluación de seguridad y cadena de suministro
 sentinel audit                          # 10 checks; 0 OK, 2 si hay fallos
-sentinel integrity build . --output docs/manifest.json
-sentinel integrity verify . --manifest docs/manifest.json --public-key public.pem
+sentinel integrity build . --output build/manifest.json
+sentinel integrity verify . --manifest build/manifest.json --public-key public.pem
 
 # Análisis de macros (además de OFFICE-MACRO, reglas VBA-* sobre el código)
 sentinel scan C:\Descargas\informe.docm
@@ -141,7 +143,8 @@ escriben en el JSONL de auditoría. La acción de un hallazgo puede ser
 `quarantined`, `detected` o `error` (`clean` si no hay hallazgos). El monitor
 acepta `--backend native|watchdog|polling` para forzar el mecanismo de vigilancia
 (si no se especifica, se elige automáticamente). El backend nativo no SIGUE
-reparse points y solo vigila directorios: los archivos sueltos se ignoran.
+reparse points: vigila directorios con `ReadDirectoryChangesW` y, si se le indican
+archivos concretos, los vigila mediante sondeo (`polling`).
 Las notificaciones se lanzan en un hilo daemon para no bloquear el escaneo;
 `--notify none` es la opción recomendada al ejecutar como servicio.
 
@@ -218,7 +221,7 @@ sentinel/
 ```json
 {
   "schema": 1,
-  "version": "2026-11-21",
+  "version": "2026-11-23",
   "revision": 3,
   "hashes": {
     "<sha256>": {"id": "IOC-0001", "severity": "high", "description": "..."}
@@ -291,13 +294,19 @@ valida también la firma Ed25519 del manifiesto. El análisis estático con
 `python -m bandit -r sentinel -x tests` terminó con **0 avisos** (6026 líneas
 analizadas; detalle en `docs/bandit-results.json`) y el análisis de
 dependencias con `pip-audit` sobre los extras declarados encontró **0
-vulnerabilidades** en 24 paquetes (`docs/pip-audit-results.json`). El build de PyInstaller genera
-y empaqueta `manifest.json` (y su firma si se define `SENTINEL_PRIVATE_KEY`)
-dentro de `sentinel/data`; se puede verificar con:
+vulnerabilidades** en 24 paquetes (`docs/pip-audit-results.json`). El build de
+PyInstaller genera y empaqueta `manifest.json` (y su firma si se define
+`SENTINEL_PRIVATE_KEY`)
+dentro de `sentinel/data`. En un build onedir (`-OneFile:$false`) se puede
+verificar con:
 
 ```powershell
 sentinel integrity verify _internal\sentinel\data --manifest _internal\sentinel\data\manifest.json --public-key _internal\sentinel\data\signatures.json.pub
 ```
+
+En el build onefile por defecto no existe `_internal`: los datos se extraen en
+una carpeta temporal `_MEIxxxxx` mientras el proceso está vivo. Para verificar
+el bundle onefile, usa la copia de `sentinel/data` del árbol de fuentes.
 
 Rendimiento medido en este equipo (Python 3.10.11, Windows 10, 2000 archivos,
 63 MiB, `python tools/benchmark.py --files 2000`):

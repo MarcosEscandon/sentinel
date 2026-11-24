@@ -4,8 +4,8 @@ Formato de ``signatures.json`` (esquema 1)::
 
     {
       "schema": 1,
-      "version": "2026-11-21",
-      "updated_at": "2026-11-21T00:00:00+00:00",
+      "version": "2026-11-23",
+      "updated_at": "2026-11-23T00:00:00+00:00",
       "hashes": {
         "<sha256>": {
           "id": "TEST-001",

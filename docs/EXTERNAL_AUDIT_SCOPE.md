@@ -71,7 +71,7 @@ Preguntas que debe responder la auditoría:
 
 ## 6. Paquete de evidencia a entregar
 
-- Repositorio limpio con los cuatro commits actuales y `.gitignore` efectivo.
+- Repositorio limpio y con `.gitignore` efectivo.
 - `python -m pytest -q` → 127 pruebas en verde.
 - `python -m ruff check .` → sin avisos.
 - `python -m bandit -r sentinel -x tests` → 0 avisos; `docs/bandit-results.json`.

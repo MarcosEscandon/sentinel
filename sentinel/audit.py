@@ -7,9 +7,10 @@ la CLI: los errores se convierten en ``AuditCheck(passed=False)``.
 
 La clave pública utilizada por ``signatures.signed`` se resuelve, en este
 orden, desde ``SENTINEL_PUBLIC_KEY``, ``<home>/signing.pub`` y
-``<signatures>.pub``. La CLI solo recibe la clave como opción de
-``sentinel signatures update --public-key``; no existe una configuración
-persistente, por lo que esta auditoría define esa convención explícitamente.
+``<signatures>.pub``. La CLI recibe la clave en
+``sentinel signatures update --public-key`` y en ``sentinel audit --public-key``
+(que la inyecta en ``SENTINEL_PUBLIC_KEY``); no hay configuración persistente,
+así que esta auditoría usa esa convención de resolución.
 """
 
 from __future__ import annotations

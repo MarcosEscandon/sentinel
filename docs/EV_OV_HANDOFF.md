@@ -137,11 +137,16 @@ política WDAC en modo imposición.
   reputación (informe a Microsoft Defender for Endpoint / SmartScreen).
 - Verificación del manifiesto Ed25519 incluido:
 
+  Solo en un build onedir (`-OneFile:$false`):
+
   ```powershell
   sentinel integrity verify _internal\sentinel\data `
     --manifest _internal\sentinel\data\manifest.json `
     --public-key _internal\sentinel\data\signatures.json.pub
   ```
+
+  En el build onefile por defecto no hay `_internal`; verifica la copia de
+  `sentinel/data` del árbol de fuentes.
 
 ## 7. Límites que este handoff no resuelve
 

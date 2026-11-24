@@ -51,7 +51,8 @@ automática a incidentes.
 
 ## Superficie de ataque
 
-1. **Datos analizados**: PE (`engine/ole.py`, heurísticas), ZIP/TAR/GZ/BZ2/XZ
+1. **Datos analizados**: PE (`engine/heuristics.py`), OLE2/CFB (`engine/ole.py`),
+   ZIP/TAR/GZ/BZ2/XZ
    (`engine/containers.py`), OLE, expresiones regulares de contenido, reglas
    YARA opcionales y cálculo de entropía.
 2. **Rutas**: symlinks, junctions y reparse points; rutas relativas, nombres

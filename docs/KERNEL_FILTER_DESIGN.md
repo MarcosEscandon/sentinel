@@ -104,9 +104,11 @@ Reglas del protocolo:
 
 ## 5. Integración con el código actual
 
-- El userService existente (`service.py`) crea el puente y mantiene un hilo de
-  lectura del puerto; no se sustituye `RealtimeMonitor`, sino que se añade un
-  backend `native-kernel` seleccionable con `--backend`.
+- El servicio existente (`service.py`) crearía el puente y mantendría un hilo
+  de lectura del puerto; no se sustituiría `RealtimeMonitor`, sino que se
+  añadiría un backend `native-kernel` seleccionable con `--backend`. Ese
+  backend, `kernel_bridge.py` y el propio driver **no existen hoy**: forman
+  parte de esta propuesta.
 - `process_path()` sigue siendo el único punto que decide cuarentena y
   notificación; el driver solo ejecuta el veredicto. Así se conservan
   `audit.jsonl`, `history.db`, HMAC de cuarentena y los códigos de salida.

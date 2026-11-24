@@ -210,8 +210,10 @@ El ejecutable incluye el backend nativo de vigilancia (`ReadDirectoryChangesW`
 vía `ctypes`), así que en Windows no necesita `watchdog` ni `pywin32` para
 `sentinel monitor`. Las notificaciones usan un toast si se instala `winotify`
 en el entorno de compilación; si no, se usa un cuadro de mensaje nativo. Para
-instalar servicios sí se requiere el extra `service` (`pywin32`) en el equipo
-de destino.
+instalar el servicio **desde el exe** no hace falta instalar el extra `service`
+(`pywin32`) en el equipo de destino: el spec incluye los módulos necesarios.
+Ese extra solo es necesario al ejecutar Sentinel desde Python o si el build se
+hizo sin `pywin32` instalado. Sí se requiere elevación administrativa.
 
 Verificación realizada en este entorno: `.\packaging\build.ps1 -Console -Sign`
 generó `dist\sentinel.exe` (onefile, ~14 MB), aplicó una firma Authenticode de
