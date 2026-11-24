@@ -174,9 +174,18 @@ Además de la autoevaluación en tiempo de ejecución se ejecutaron:
 * `git ls-files`: ni la clave privada (`packaging/keys/private.pem`), ni
   `packaging/tools/`, ni `dist/`, `build/` o la home de pruebas están
   versionados.
+* Análisis de dependencias (SCA) con `pip-audit` sobre los extras declarados
+  en `pyproject.toml` (24 paquetes resueltos): **0 vulnerabilidades**
+  (`docs/pip-audit-results.json`). El entorno principal quedó con 44 paquetes
+  y 0 vulnerabilidades tras retirar la herramienta de auditoría.
+  `setuptools` se actualizó a 84.2.1. La herramienta SCA se ejecutó en un venv
+  aislado con Python 3.14: en Python 3.10 su dependencia transitiva `filelock`
+  no tiene versión corregida (el arreglo exige ≥3.11), por lo que no se añadió
+  `pip-audit` a los extras `dev`.
 
-Esto no sustituye a una revisión externa ni a un análisis de dependencias
-(SCA): `bandit` detecta patrones inseguros, no vulnerabilidades lógicas.
+Esto no sustituye a una revisión externa: `bandit` detecta patrones inseguros y
+`pip-audit` compara versiones con bases de vulnerabilidades; ninguno encuentra
+fallos lógicos ni garantiza la seguridad del producto.
 
 ## Checklist de despliegue
 

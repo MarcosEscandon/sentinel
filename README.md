@@ -288,7 +288,9 @@ resultado es **100/100**. El detalle y las remediations están en
 `verify` distingue `missing`, `modified` y `added`, y con `--public-key`
 valida también la firma Ed25519 del manifiesto. El análisis estático con
 `python -m bandit -r sentinel -x tests` terminó con **0 avisos** (6026 líneas
-analizadas; detalle en `docs/bandit-results.json`). El build de PyInstaller genera
+analizadas; detalle en `docs/bandit-results.json`) y el análisis de
+dependencias con `pip-audit` sobre los extras declarados encontró **0
+vulnerabilidades** en 24 paquetes (`docs/pip-audit-results.json`). El build de PyInstaller genera
 y empaqueta `manifest.json` (y su firma si se define `SENTINEL_PRIVATE_KEY`)
 dentro de `sentinel/data`; se puede verificar con:
 
