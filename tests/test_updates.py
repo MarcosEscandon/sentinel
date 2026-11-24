@@ -124,3 +124,15 @@ def test_missing_public_key_is_rejected(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError):
         update_signatures(url, target, tmp_path / "missing.pub")
     assert not target.exists()
+
+
+@pytest.mark.parametrize("url", ["file:///C:/tmp/firmas.json", "ftp://firmas.local/x", "https:///sin-host"])
+def test_non_http_url_is_rejected(tmp_path, url):
+    private = tmp_path / "key.pem"
+    public = tmp_path / "key.pub"
+    crypto.generate_keypair(private, public)
+    target = tmp_path / "signatures.json"
+
+    with pytest.raises(ValueError, match="URL no permitida"):
+        update_signatures(url, target, public)
+    assert not target.exists()
