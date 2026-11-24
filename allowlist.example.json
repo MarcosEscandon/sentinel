@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "paths": [
+    "C:\\Tools\\known-good.exe"
+  ],
+  "directories": [
+    "C:\\Program Files\\MiApp"
+  ],
+  "globs": [
+    "C:\\Users\\*\\AppData\\Local\\Temp\\mi-app-*\\**"
+  ],
+  "hashes": []
+}

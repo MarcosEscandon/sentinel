@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-scanner"
+version = "0.1.0"
+description = "Motor de escaneo de malware modular para Windows"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Sentinel" }]
+dependencies = []
+
+[project.optional-dependencies]
+yara = ["yara-python>=4.3"]
+pe = ["pefile>=2023.9.6"]
+signing = ["cryptography>=42"]
+hardening = ["regex>=2023.10.3"]
+service = ["pywin32>=305; sys_platform == 'win32'"]
+realtime = ["watchdog>=4"]
+packaging = ["pyinstaller>=6"]
+dev = [
+  "pytest>=7.4",
+  "ruff>=0.5",
+  "cryptography>=42",
+  "regex>=2023.10.3",
+  "watchdog>=4",
+]
+
+[project.scripts]
+sentinel = "sentinel.cli:main"
+sentinel-gui = "sentinel.gui:main"
+
+[tool.setuptools.packages.find]
+include = ["sentinel*"]
+
+[tool.setuptools.package-data]
+sentinel = ["data/*.json", "data/*.sig", "data/*.pub", "data/yara/*.yar", "data/iocs/*.csv", "data/iocs/*.com"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["build", "dist", ".venv"]

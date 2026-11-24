@@ -1,0 +1,11 @@
+type,value,severity,description,id
+sha256,ce583821191345274cd954b2db7da9742c239fe413fc17dcb97ffdd7b51cb072,high,Dark Caracal - MS Windows HtmlHelp Data (Neo23x0/signature-base),IOC-DARKCARACAL-01
+sha256,ba4e063472a2559b4baa82d5272304a1cdae6968145c5ef221295c90e88458e2,high,Dark Caracal - PE32 DLL (Neo23x0/signature-base),IOC-DARKCARACAL-02
+sha256,26419a0b6e033cdcb7bf4ca6b0b24fda35490cc6f2796682fb9403620f63d428,high,Dark Caracal - PE32 executable (Neo23x0/signature-base),IOC-DARKCARACAL-03
+sha256,15af5bbf3c8d5e5db41fd7c3d722e8b247b40f2da747d5c334f7fd80b715a649,high,Dark Caracal - ZIP archive (Neo23x0/signature-base),IOC-DARKCARACAL-04
+sha256,ff808d0a12676bfac88fd26f955154f8884f2bb7c534b9936510fd6296c543e8,high,Sofacy activity - Unit 42 (Neo23x0/signature-base),IOC-SOFACY-01
+sha256,12e6642cf6413bdf5388bee663080fa299591b2ba023d069286f3be9647547c8,high,Sofacy activity - Unit 42 (Neo23x0/signature-base),IOC-SOFACY-02
+sha256,8549dcbdfc6885e0e7a1521da61352ef4f084d969dd30719166b47fdb204828a,high,Tick Group weaponized USB - Unit 42 (Neo23x0/signature-base),IOC-TICK-01
+sha256,31aea8630d5d2fcbb37a8e72fe4e096d0f2d8f05e03234645c69d7e8b59bb0e8,high,Tick Group weaponized USB - Unit 42 (Neo23x0/signature-base),IOC-TICK-02
+sha256,b1bb1d5f178b064eb1d7c9cc7cadcf8b3959a940c14cee457ce3aba5795660aa,high,Tick Group weaponized USB - Unit 42 (Neo23x0/signature-base),IOC-TICK-03
+sha256,019874898284935719dc74a6699fb822e20cdb8e3a96a7dc8ec4f625e3f1116e,high,Tick Group weaponized USB - Unit 42 (Neo23x0/signature-base),IOC-TICK-04

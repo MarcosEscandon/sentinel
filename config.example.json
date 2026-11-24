@@ -1,0 +1,26 @@
+{
+  "max_file_size": 67108864,
+  "sample_size": 524288,
+  "hash_all": true,
+  "follow_symlinks": false,
+  "exclude_dirs": [
+    "$recycle.bin",
+    "system volume information",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "descargas/iso-grandes"
+  ],
+  "include_extensions": null,
+  "entropy_threshold": 7.5,
+  "entropy_min_size": 8192,
+  "suspicion_threshold": 6.0,
+  "use_heuristics": true,
+  "use_yara": true,
+  "jobs": 1,
+  "scan_containers": true,
+  "container_max_entries": 500,
+  "container_max_uncompressed": 67108864,
+  "container_max_depth": 3,
+  "container_max_ratio": 100
+}

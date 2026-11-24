@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-11-23T12:59:48+00:00",
+  "python": "3.10.11",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "files_requested": 2000,
+  "marker_files": 40,
+  "total_bytes": 66109688,
+  "jobs_tested": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "results": [
+    {
+      "jobs": 1,
+      "elapsed_seconds": 2.3863,
+      "files_scanned": 2000,
+      "bytes_scanned": 66109688,
+      "mb_per_second": 26.42,
+      "files_per_second": 838.12,
+      "findings": 1948,
+      "errors": 0
+    },
+    {
+      "jobs": 2,
+      "elapsed_seconds": 2.2431,
+      "files_scanned": 2000,
+      "bytes_scanned": 66109688,
+      "mb_per_second": 28.11,
+      "files_per_second": 891.64,
+      "findings": 1948,
+      "errors": 0
+    },
+    {
+      "jobs": 4,
+      "elapsed_seconds": 2.2036,
+      "files_scanned": 2000,
+      "bytes_scanned": 66109688,
+      "mb_per_second": 28.61,
+      "files_per_second": 907.61,
+      "findings": 1948,
+      "errors": 0
+    },
+    {
+      "jobs": 8,
+      "elapsed_seconds": 2.2148,
+      "files_scanned": 2000,
+      "bytes_scanned": 66109688,
+      "mb_per_second": 28.47,
+      "files_per_second": 903.02,
+      "findings": 1948,
+      "errors": 0
+    }
+  ]
+}
