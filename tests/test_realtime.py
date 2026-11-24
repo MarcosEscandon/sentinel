@@ -1,4 +1,4 @@
-"""Pruebas del monitor en tiempo real (sin hilos en los casos unitarios)."""
+"""Tests for the real-time monitor (no threads in the unit cases)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _make_monitor(
     on_finding: object = None,
     backend: str = "polling",
 ) -> RealtimeMonitor:
-    """Construye un monitor con opciones comunes para los tests."""
+    """Build a monitor with common options for the tests."""
     return RealtimeMonitor(
         [root],
         signatures=signatures,
@@ -44,7 +44,7 @@ def _make_monitor(
 def test_process_path_detects_quarantines_and_audits(tmp_path, default_db):
     watch = tmp_path / "watch"
     watch.mkdir()
-    target = watch / "sospechoso.bin"
+    target = watch / "suspicious.bin"
     target.write_bytes(MARKER)
     store = Quarantine(tmp_path / "q")
     audit_path = tmp_path / "audit.jsonl"
@@ -81,7 +81,7 @@ def test_process_path_detects_quarantines_and_audits(tmp_path, default_db):
 def test_process_path_allowlist_skips_quarantine(tmp_path, default_db):
     watch = tmp_path / "watch"
     watch.mkdir()
-    target = watch / "permitido.bin"
+    target = watch / "allowed.bin"
     target.write_bytes(MARKER)
     store = Quarantine(tmp_path / "q")
     events: list[tuple[str, str]] = []
@@ -104,7 +104,7 @@ def test_process_path_allowlist_skips_quarantine(tmp_path, default_db):
 
 
 def test_process_path_without_quarantine_reports_detected(tmp_path, default_db):
-    target = tmp_path / "detectado.bin"
+    target = tmp_path / "detected.bin"
     target.write_bytes(MARKER)
     actions: list[str] = []
     monitor = _make_monitor(
@@ -120,7 +120,7 @@ def test_process_path_without_quarantine_reports_detected(tmp_path, default_db):
 
 
 def test_excluded_directory_is_not_processed(tmp_path, default_db):
-    target = tmp_path / "node_modules" / "ignorado.bin"
+    target = tmp_path / "node_modules" / "ignored.bin"
     target.parent.mkdir()
     target.write_bytes(MARKER)
     store = Quarantine(tmp_path / "q")
@@ -152,7 +152,7 @@ def test_available_backends_and_lifecycle():
 
 
 def test_available_backends_native_depends_on_os():
-    """El backend nativo solo se ofrece en Windows."""
+    """The native backend is only offered on Windows."""
     backends = available_backends()
     if os.name == "nt":
         assert backends[0] == "native"
@@ -162,13 +162,13 @@ def test_available_backends_native_depends_on_os():
 
 
 def test_invalid_backend_raises_value_error():
-    """Forzar un backend no disponible debe fallar con un mensaje claro."""
+    """Forcing an unavailable backend must fail with a clear message."""
     with pytest.raises(ValueError, match="backend"):
-        RealtimeMonitor([], backend="inexistente")
+        RealtimeMonitor([], backend="nonexistent")
 
 
 def test_worker_detects_new_file(tmp_path, default_db):
-    """El backend de sondeo detecta altas (se fuerza para no depender del SO)."""
+    """The polling backend detects additions (forced to avoid depending on the OS)."""
     watch = tmp_path / "watch"
     watch.mkdir()
     store = Quarantine(tmp_path / "q")
@@ -182,7 +182,7 @@ def test_worker_detects_new_file(tmp_path, default_db):
     assert monitor.backend == "polling"
     monitor.start()
     try:
-        target = watch / "nuevo.bin"
+        target = watch / "new.bin"
         target.write_bytes(MARKER)
         deadline = time.monotonic() + 5.0
         while not actions and time.monotonic() < deadline:
@@ -195,12 +195,12 @@ def test_worker_detects_new_file(tmp_path, default_db):
         monitor.stop(timeout=2)
 
 
-@pytest.mark.skipif(os.name != "nt", reason="el backend nativo es exclusivo de Windows")
+@pytest.mark.skipif(os.name != "nt", reason="the native backend is Windows-only")
 def test_native_backend_detects_changes_and_stops_cleanly(tmp_path, default_db):
-    """En Windows el backend nativo vigila directorios y sondea archivos sueltos."""
+    """On Windows the native backend watches directories and polls loose files."""
     watch = tmp_path / "watch"
     watch.mkdir()
-    loose = tmp_path / "suelta.bin"
+    loose = tmp_path / "loose.bin"
     loose.write_bytes(MARKER)
     store = Quarantine(tmp_path / "q")
     actions: list[str] = []
@@ -216,15 +216,15 @@ def test_native_backend_detects_changes_and_stops_cleanly(tmp_path, default_db):
     monitor.start()
     try:
         assert monitor.backend == "native"
-        # Espera a que el vigilante abra el handle antes de generar eventos.
+        # Wait for the watcher to open the handle before generating events.
         ready = time.monotonic() + 2.0
         while (
             not all(watcher._handle for watcher in monitor._native_watchers)
             and time.monotonic() < ready
         ):
             time.sleep(0.01)
-        (watch / "nuevo.bin").write_bytes(MARKER)
-        loose.write_bytes(MARKER + b"cambio")
+        (watch / "new.bin").write_bytes(MARKER)
+        loose.write_bytes(MARKER + b"change")
         deadline = time.monotonic() + 5.0
         while len(actions) < 2 and time.monotonic() < deadline:
             time.sleep(0.02)

@@ -7,7 +7,7 @@
     "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f": {
       "id": "EICAR-HASH",
       "severity": "medium",
-      "description": "Archivo de prueba estándar EICAR (IOC real e inofensivo)"
+      "description": "Standard EICAR test file (real, harmless IOC)"
     },
     "ce583821191345274cd954b2db7da9742c239fe413fc17dcb97ffdd7b51cb072": {
       "id": "IOC-DARKCARACAL-01",
@@ -65,7 +65,7 @@
       "id": "TEST-DOUBLE-EXT",
       "pattern": "\\.(pdf|doc|docx|xls|xlsx|jpg|png|txt|zip)\\.(exe|scr|pif|com|bat|cmd|vbs|ps1|js|jar|hta|lnk|msi)$",
       "severity": "medium",
-      "description": "Doble extensión de documento: posible engaño al usuario"
+      "description": "Double document extension: possible user deception"
     }
   ],
   "content": [
@@ -73,13 +73,13 @@
       "id": "TEST-CONTENT-MARKER",
       "pattern": "SENTINEL_TEST_MARKER",
       "severity": "low",
-      "description": "Marcador sintético usado por sentinel selftest"
+      "description": "Synthetic marker used by sentinel selftest"
     },
     {
       "id": "EICAR-CONTENT",
       "pattern": "EICAR-STANDARD-ANTIVIRUS-TEST-FILE",
       "severity": "medium",
-      "description": "Firma de contenido EICAR estándar (IOC real e inofensivo)",
+      "description": "Standard EICAR content signature (real, harmless IOC)",
       "max_size": 1048576
     }
   ]

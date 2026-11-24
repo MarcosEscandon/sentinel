@@ -18,13 +18,13 @@ def make_zip(entries: dict[str, bytes]) -> bytes:
 
 
 def test_unpack_zip(tmp_path):
-    payload = make_zip({"a.txt": b"hola", "sub/b.bin": b"mundo"})
-    entries = unpack(payload, "paquete.zip", ScanConfig())
+    payload = make_zip({"a.txt": b"hello", "sub/b.bin": b"world"})
+    entries = unpack(payload, "package.zip", ScanConfig())
     assert [item.path for item in entries] == [
-        "paquete.zip!/a.txt",
-        "paquete.zip!/sub/b.bin",
+        "package.zip!/a.txt",
+        "package.zip!/sub/b.bin",
     ]
-    assert entries[0].data == b"hola"
+    assert entries[0].data == b"hello"
 
 
 def test_unpack_nested_zip():
@@ -58,7 +58,7 @@ def test_scanner_detects_inside_zip(tmp_path):
 
     from sentinel.engine.signatures import SignatureDatabase
 
-    archive = tmp_path / "paquete.zip"
+    archive = tmp_path / "package.zip"
     archive.write_bytes(make_zip({"marker.txt": b"SENTINEL_TEST_MARKER"}))
     database = SignatureDatabase.load(
         Path(__file__).parent.parent / "sentinel" / "data" / "signatures.json"
@@ -66,4 +66,4 @@ def test_scanner_detects_inside_zip(tmp_path):
     result = Scanner(database).scan([archive])
     assert result.container_entries == 1
     assert any("marker.txt" in item.path for item in result.findings)
-    assert all("contenedor:" in " ".join(item.indicators) for item in result.findings)
+    assert all("container:" in " ".join(item.indicators) for item in result.findings)

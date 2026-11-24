@@ -1,4 +1,4 @@
-"""Pruebas de la autoevaluación de seguridad de Sentinel."""
+"""Tests for the Sentinel security self-assessment."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ CHECK_NAMES = {
 
 @pytest.fixture
 def signed_database(tmp_path: Path):
-    """Copia la base incluida, la firma y devuelve ``(json, pública)``."""
+    """Copies the bundled database, signs it, and returns ``(json, public key)``."""
     payload = BUNDLED_SIGNATURES.read_bytes()
     database = tmp_path / "signatures.json"
     database.write_bytes(payload)
@@ -60,8 +60,8 @@ def test_bundled_signatures_pass_everything(tmp_path: Path) -> None:
     assert audit.passed
     assert audit.score == 100
     assert "Ed25519" in _by_name(audit)["signatures.signed"].detail
-    assert "sin entradas" in _by_name(audit)["quarantine.integrity"].detail
-    # El evento de prueba queda como una línea JSON válida, no como un archivo roto.
+    assert "no entries" in _by_name(audit)["quarantine.integrity"].detail
+    # The test event remains a valid JSON line, not a broken file.
     lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[-1])["event"] == "audit.check"
 
@@ -116,13 +116,13 @@ def test_wrong_signature_length_fails(tmp_path: Path, signed_database) -> None:
 
 
 def test_to_dict_failures_and_invalid_paths(tmp_path: Path) -> None:
-    missing_home = tmp_path / "no-existe" / "anidada"
-    missing_signatures = tmp_path / "no-existe.json"
+    missing_home = tmp_path / "missing" / "nested"
+    missing_signatures = tmp_path / "missing.json"
 
     audit = run_security_audit(missing_home, missing_signatures)
     payload = audit.to_dict()
 
-    # El informe es serializable y refleja exactamente las propiedades.
+    # The report is serializable and accurately reflects the properties.
     json.dumps(payload)
     assert payload["home"] == str(missing_home)
     assert payload["signatures"] == str(missing_signatures)
@@ -136,7 +136,7 @@ def test_to_dict_failures_and_invalid_paths(tmp_path: Path) -> None:
     assert audit.score == round(100 * sum(c.passed for c in audit.checks) / len(audit.checks))
     failed_names = {check.name for check in audit.failures}
     assert {"signatures.valid", "signatures.signed", "iocs.minimum"} <= failed_names
-    # Aun con la home ausente, el check de logging crea el directorio y el JSONL.
+    # Even when the home directory is absent, the logging check creates it and the JSONL.
     assert json.loads((missing_home / "audit.jsonl").read_text(encoding="utf-8").splitlines()[-1])[
         "event"
     ] == "audit.check"
@@ -158,17 +158,17 @@ def test_security_audit_score_edges(tmp_path: Path) -> None:
     assert empty.failures == []
 
     checks = [
-        AuditCheck("uno", True, "bien"),
-        AuditCheck("dos", True, "bien", "remediación no usada"),
+        AuditCheck("one", True, "ok"),
+        AuditCheck("two", True, "ok", "unused remediation"),
     ]
     full = SecurityAudit(tmp_path, BUNDLED_SIGNATURES, checks)
     assert full.passed
     assert full.score == 100
     assert full.failures == []
-    assert full.to_dict()["checks"][1]["remediation"] == "remediación no usada"
+    assert full.to_dict()["checks"][1]["remediation"] == "unused remediation"
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Rutas exclusivas de Windows")
+@pytest.mark.skipif(os.name != "nt", reason="Windows-only paths")
 def test_home_location_helper_windows() -> None:
     assert _home_location_problem(Path(r"C:\Windows\Temp")) is not None
     assert _home_location_problem(Path(r"C:\Program Files\Sentinel")) is not None

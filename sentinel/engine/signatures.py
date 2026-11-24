@@ -1,6 +1,6 @@
-"""Base de datos de firmas y reglas de coincidencia.
+"""Signature database and matching rules.
 
-Formato de ``signatures.json`` (esquema 1)::
+Format of ``signatures.json`` (schema 1)::
 
     {
       "schema": 1,
@@ -18,13 +18,13 @@ Formato de ``signatures.json`` (esquema 1)::
          "severity": "medium", "description": "..."}
       ],
       "content": [
-        {"id": "CT-001", "pattern": "sospechoso", "severity": "low",
+        {"id": "CT-001", "pattern": "suspicious", "severity": "low",
          "description": "...", "max_size": 1048576}
       ]
     }
 
-Las reglas ``content`` se compilan como expresiones regulares sobre bytes;
-por eso conviene usar patrones ASCII y escapar correctamente el JSON.
+``content`` rules are compiled as regular expressions over bytes, so ASCII
+patterns should be used and JSON escaped correctly.
 """
 
 from __future__ import annotations
@@ -37,11 +37,11 @@ from typing import Any
 
 from ..core.models import Detection, RuleHit, Severity, utc_now
 
-try:  # ``regex`` permite limitar el tiempo de evaluación; ``re`` es el fallback.
+try:  # ``regex`` supports limiting evaluation time; ``re`` is the fallback.
     import regex as _engine
 
     _TIMEOUT_SUPPORTED = True
-except ImportError:  # pragma: no cover - depende del entorno
+except ImportError:  # pragma: no cover - environment-dependent
     _engine = re
     _TIMEOUT_SUPPORTED = False
 
@@ -69,7 +69,7 @@ class _CompiledRule:
 def _required_str(item: dict[str, Any], key: str, context: str) -> str:
     value = item.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{context}: '{key}' debe ser una cadena no vacía")
+        raise ValueError(f"{context}: '{key}' must be a non-empty string")
     return value.strip()
 
 
@@ -77,7 +77,7 @@ def _compile_rule(
     item: Any, detection: Detection, index: int, section: str
 ) -> _CompiledRule:
     if not isinstance(item, dict):
-        raise TypeError(f"{section}[{index}]: se esperaba un objeto")
+        raise TypeError(f"{section}[{index}]: expected an object")
     context = f"{section}[{index}]"
     rule_id = _required_str(item, "id", context)
     pattern = _required_str(item, "pattern", context)
@@ -89,15 +89,15 @@ def _compile_rule(
     try:
         regex = _engine.compile(pattern.encode("utf-8"), flags)
     except _engine.error as exc:
-        raise ValueError(f"{context}: patrón inválido: {exc}") from exc
+        raise ValueError(f"{context}: invalid pattern: {exc}") from exc
     max_size = item.get("max_size")
     if max_size is not None and (not isinstance(max_size, int) or max_size < 0):
-        raise ValueError(f"{context}: max_size debe ser un entero >= 0")
+        raise ValueError(f"{context}: max_size must be an integer >= 0")
     return _CompiledRule(rule_id, regex, detection, severity, description, max_size)
 
 
 class SignatureDatabase:
-    """Conjunto inmutable de firmas cargadas desde un JSON."""
+    """Immutable set of signatures loaded from JSON."""
 
     def __init__(
         self,
@@ -120,23 +120,23 @@ class SignatureDatabase:
     @classmethod
     def from_dict(cls, payload: Any) -> SignatureDatabase:
         if not isinstance(payload, dict):
-            raise TypeError("La base de firmas debe ser un objeto JSON")
+            raise TypeError("Signature database must be a JSON object")
         schema = payload.get("schema", SCHEMA_VERSION)
         if schema != SCHEMA_VERSION:
             raise ValueError(
-                f"Esquema de firmas no soportado: {schema!r} (se espera {SCHEMA_VERSION})"
+                f"Unsupported signature schema: {schema!r} (expected {SCHEMA_VERSION})"
             )
 
         raw_hashes = payload.get("hashes", {})
         if not isinstance(raw_hashes, dict):
-            raise TypeError("'hashes' debe ser un objeto")
+            raise TypeError("'hashes' must be an object")
         hashes: dict[str, dict[str, Any]] = {}
         for digest, meta in raw_hashes.items():
             key = str(digest).lower().strip()
             if not _HEX64.match(key):
-                raise ValueError(f"Hash inválido en la base de firmas: {digest!r}")
+                raise ValueError(f"Invalid hash in signature database: {digest!r}")
             if not isinstance(meta, dict):
-                raise TypeError(f"Metadatos inválidos para el hash {digest}")
+                raise TypeError(f"Invalid metadata for hash {digest}")
             rule_id = _required_str(meta, "id", f"hashes[{digest}]")
             description = _required_str(meta, "description", f"hashes[{digest}]")
             severity = Severity.parse(meta.get("severity", "high"))
@@ -148,7 +148,7 @@ class SignatureDatabase:
 
         revision = payload.get("revision", 0)
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
-            raise ValueError("'revision' debe ser un entero >= 0")
+            raise ValueError("'revision' must be an integer >= 0")
 
         filename_rules = [
             _compile_rule(item, Detection.FILENAME, i, "filenames")
@@ -206,7 +206,7 @@ class SignatureDatabase:
                         severity=rule.severity,
                         description=rule.description,
                         indicators=(
-                            f"nombre coincide con /{rule.regex.pattern.decode('utf-8', 'ignore')}/",
+                            f"name matches /{rule.regex.pattern.decode('utf-8', 'ignore')}/",
                         ),
                     )
                 )
@@ -230,17 +230,17 @@ class SignatureDatabase:
                         detection=rule.detection,
                         severity=rule.severity,
                         description=rule.description,
-                        indicators=(f"contenido coincide con {token!r}",),
+                        indicators=(f"content matches {token!r}",),
                     )
                 )
         return hits
 
     def check_rollback(self, current: SignatureDatabase) -> None:
-        """Rechaza una base más antigua que la instalada."""
+        """Rejects a database older than the installed one."""
         if self.revision < current.revision:
             raise ValueError(
-                f"Rollback detectado: la descarga es revisión {self.revision} "
-                f"y la instalada es {current.revision}"
+                f"Rollback detected: downloaded revision is {self.revision} "
+                f"and installed revision is {current.revision}"
             )
 
     def _timeout_hit(self, rule: _CompiledRule, detection: Detection) -> RuleHit:
@@ -249,8 +249,8 @@ class SignatureDatabase:
             detection=detection,
             severity=Severity.INFO,
             description=(
-                f"La regla {rule.rule_id} superó el límite de {self.rule_timeout_ms:g} ms "
-                "y se omitió"
+                f"Rule {rule.rule_id} exceeded the {self.rule_timeout_ms:g} ms limit "
+                "and was skipped"
             ),
             indicators=(rule.rule_id,),
         )

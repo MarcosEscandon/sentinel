@@ -30,11 +30,11 @@ def test_exact_path_directory_glob_and_hash(tmp_path):
 
 
 def test_glob_matching(tmp_path):
-    target = tmp_path / "cualquiera.exe"
-    pattern = normalize_path(target).replace("cualquiera.exe", "*.exe")
+    target = tmp_path / "any.exe"
+    pattern = normalize_path(target).replace("any.exe", "*.exe")
     rules = AllowList(globs=frozenset({pattern}))
     assert rules.allows_path(target)
-    assert not rules.allows_path(tmp_path / "otro.txt")
+    assert not rules.allows_path(tmp_path / "other.txt")
 
 
 def test_self_and_files(tmp_path):
@@ -45,7 +45,7 @@ def test_self_and_files(tmp_path):
     )
     assert rules.allows_path(tmp_path / "history.db")
     assert rules.allows_path(report)
-    assert not rules.allows_path(tmp_path.parent / "externo.exe")
+    assert not rules.allows_path(tmp_path.parent / "external.exe")
     assert "auto:sel" in rules.sources[0]
 
 

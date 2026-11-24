@@ -1,3 +1,3 @@
 type,value,severity,description,id
-sha256,275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f,medium,Archivo de prueba estándar EICAR,EICAR-HASH
-content,EICAR-STANDARD-ANTIVIRUS-TEST-FILE,medium,Cadena EICAR estándar,EICAR-CONTENT
+sha256,275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f,medium,Standard EICAR test file,EICAR-HASH
+content,EICAR-STANDARD-ANTIVIRUS-TEST-FILE,medium,Standard EICAR string,EICAR-CONTENT

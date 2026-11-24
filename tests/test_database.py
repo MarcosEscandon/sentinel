@@ -27,7 +27,7 @@ def test_mark_quarantined_respects_scan_scope(tmp_path):
     second_flags = {f["path"]: f["quarantined"] for f in db.get_scan(second_id)["findings"]}
     assert second_flags == {"C:/a.bin": 0, "C:/c.bin": 0}
 
-    # SQLite cuenta las filas coincidentes aunque el valor ya fuera 1.
+    # SQLite counts matching rows even when the value was already 1.
     assert db.mark_quarantined(["C:/a.bin"]) == 2
     assert db.stats()["quarantined"] == 3
     assert db.mark_quarantined([]) == 0

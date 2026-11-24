@@ -8,8 +8,8 @@ from sentinel.core.quarantine import Quarantine, QuarantineIntegrityError
 
 
 def test_add_list_restore(tmp_path):
-    original = tmp_path / "sospechoso.bin"
-    original.write_bytes(b"datos")
+    original = tmp_path / "suspicious.bin"
+    original.write_bytes(b"data")
     store = Quarantine(tmp_path / "quarantine")
 
     entry_id = store.add(original, "TEST-1", "abc")
@@ -21,21 +21,21 @@ def test_add_list_restore(tmp_path):
 
     restored = store.restore(entry_id)
     assert restored == original.resolve()
-    assert original.read_bytes() == b"datos"
+    assert original.read_bytes() == b"data"
     assert store.list() == []
 
 
 def test_restore_refuses_overwrite(tmp_path):
     original = tmp_path / "a.bin"
-    original.write_bytes(b"viejo")
+    original.write_bytes(b"old")
     store = Quarantine(tmp_path / "q")
     entry_id = store.add(original)
-    original.write_bytes(b"nuevo")
+    original.write_bytes(b"new")
 
     with pytest.raises(FileExistsError):
         store.restore(entry_id)
     restored = store.restore(entry_id, overwrite=True)
-    assert restored.read_bytes() == b"viejo"
+    assert restored.read_bytes() == b"old"
 
 
 def test_delete_and_prune(tmp_path):
@@ -67,16 +67,16 @@ def test_invalid_id(tmp_path):
 
 
 def test_verify_detects_modified_file(tmp_path):
-    original = tmp_path / "sospechoso.bin"
-    original.write_bytes(b"datos originales")
+    original = tmp_path / "suspicious.bin"
+    original.write_bytes(b"original data")
     store = Quarantine(tmp_path / "q")
     entry_id = store.add(original, "TEST")
 
     assert store.verify_entry(entry_id)
     stored = Path(store.get(entry_id).stored_path)
-    stored.write_bytes(b"datos manipulado")  # mismo tamaño: debe fallar por hash
+    stored.write_bytes(b"tampered data")  # same size: must fail by hash
 
-    with pytest.raises(QuarantineIntegrityError, match="Hash modificado"):
+    with pytest.raises(QuarantineIntegrityError, match="Modified hash"):
         store.verify_entry(entry_id)
     with pytest.raises(QuarantineIntegrityError):
         store.restore(entry_id)
@@ -84,20 +84,20 @@ def test_verify_detects_modified_file(tmp_path):
 
 
 def test_verify_detects_modified_index(tmp_path):
-    original = tmp_path / "sospechoso.bin"
-    original.write_bytes(b"datos")
+    original = tmp_path / "suspicious.bin"
+    original.write_bytes(b"data")
     store = Quarantine(tmp_path / "q")
     entry_id = store.add(original)
 
     payload = json.loads(store.index_path.read_text(encoding="utf-8"))
-    payload["entries"][0]["reason"] = "MANIPULADO"
+    payload["entries"][0]["reason"] = "TAMPERED"
     store.index_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(QuarantineIntegrityError, match="índice"):
+    with pytest.raises(QuarantineIntegrityError, match="index"):
         store.verify_entry(entry_id)
     with pytest.raises(QuarantineIntegrityError):
         store.restore(entry_id)
-    # La limpieza sigue disponible aunque el índice esté dañado.
+    # Cleanup remains available even when the index is damaged.
     assert store.prune(days=30) == 0
     store.delete(entry_id)
     assert store.list() == []

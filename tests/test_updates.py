@@ -37,7 +37,7 @@ def install_current(target, revision: int) -> None:
 
 
 def fake_download(monkeypatch, url: str, document, signature) -> None:
-    """Sirve el paquete por https simulado, sin usar esquemas file://."""
+    """Serves the package over simulated https, without using file:// schemes."""
 
     class Response(io.BytesIO):
         def __enter__(self):
@@ -65,7 +65,7 @@ def test_signed_update_succeeds(tmp_path, monkeypatch):
     document, signature = signed_bundle(tmp_path, 2, private, "new")
     target = tmp_path / "signatures.json"
     install_current(target, 1)
-    url = "https://firmas.local/signatures.json"
+    url = "https://signatures.local/signatures.json"
     fake_download(monkeypatch, url, document, signature)
 
     info = update_signatures(url, target, public)
@@ -88,10 +88,10 @@ def test_tampered_bundle_is_rejected(tmp_path, monkeypatch):
     bad_signature[0] ^= 0x01
     signature.write_bytes(bytes(bad_signature))
 
-    url = "https://firmas.local/signatures.json"
+    url = "https://signatures.local/signatures.json"
     fake_download(monkeypatch, url, document, signature)
 
-    with pytest.raises(ValueError, match="Firma Ed25519 no válida"):
+    with pytest.raises(ValueError, match="Invalid Ed25519 signature"):
         update_signatures(url, target, public)
     assert target.read_bytes() == original
 
@@ -104,7 +104,7 @@ def test_rollback_is_rejected(tmp_path, monkeypatch):
     target = tmp_path / "signatures.json"
     install_current(target, 5)
     original = target.read_bytes()
-    url = "https://firmas.local/signatures.json"
+    url = "https://signatures.local/signatures.json"
     fake_download(monkeypatch, url, document, signature)
 
     with pytest.raises(ValueError, match="Rollback"):
@@ -118,7 +118,7 @@ def test_missing_public_key_is_rejected(tmp_path, monkeypatch):
     crypto.generate_keypair(private, public)
     document, signature = signed_bundle(tmp_path, 2, private, "new")
     target = tmp_path / "signatures.json"
-    url = "https://firmas.local/signatures.json"
+    url = "https://signatures.local/signatures.json"
     fake_download(monkeypatch, url, document, signature)
 
     with pytest.raises(FileNotFoundError):
@@ -126,13 +126,13 @@ def test_missing_public_key_is_rejected(tmp_path, monkeypatch):
     assert not target.exists()
 
 
-@pytest.mark.parametrize("url", ["file:///C:/tmp/firmas.json", "ftp://firmas.local/x", "https:///sin-host"])
+@pytest.mark.parametrize("url", ["file:///C:/tmp/signatures.json", "ftp://signatures.local/x", "https:///no-host"])
 def test_non_http_url_is_rejected(tmp_path, url):
     private = tmp_path / "key.pem"
     public = tmp_path / "key.pub"
     crypto.generate_keypair(private, public)
     target = tmp_path / "signatures.json"
 
-    with pytest.raises(ValueError, match="URL no permitida"):
+    with pytest.raises(ValueError, match="URL not allowed"):
         update_signatures(url, target, public)
     assert not target.exists()

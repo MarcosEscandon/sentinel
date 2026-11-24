@@ -1,4 +1,4 @@
-"""Interfaz de línea de comandos de Sentinel."""
+"""Sentinel command-line interface."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ DEFAULT_SIGNATURES = DATA_DIR / "signatures.json"
 DEFAULT_YARA_DIR = DATA_DIR / "yara"
 DEFAULT_HOME = Path(os.environ.get("SENTINEL_HOME", str(Path.home() / ".sentinel")))
 
-# Códigos de salida: 0 limpio, 1 hallazgos, 2 error operativo.
+# Exit codes: 0 clean, 1 findings, 2 operational error.
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
 EXIT_ERROR = 2
@@ -56,7 +56,7 @@ def _enable_ansi() -> bool:
 
 
 class Colors:
-    """Colores ANSI con degradación limpia cuando no están disponibles."""
+    """ANSI colors with graceful degradation when unavailable."""
 
     def __init__(self, enabled: bool | None = None) -> None:
         self.enabled = _enable_ansi() if enabled is None else enabled
@@ -92,25 +92,25 @@ def human_size(size: int) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sentinel",
-        description="Escáner de malware modular (firmas + heurística + YARA opcional).",
+        description="Modular malware scanner (signatures + heuristics + optional YARA).",
     )
     parser.add_argument("--version", action="version", version=f"sentinel {__version__}")
     parser.add_argument(
         "--home",
         default=str(DEFAULT_HOME),
-        help="Directorio de datos (por defecto ~/.sentinel o $SENTINEL_HOME).",
+        help="Data directory (default ~/.sentinel or $SENTINEL_HOME).",
     )
     parser.add_argument(
         "--signatures",
         default=str(DEFAULT_SIGNATURES),
-        help="Ruta a signatures.json.",
+        help="Path to signatures.json.",
     )
-    parser.add_argument("--config-file", help="Ruta a un JSON de configuración del escáner.")
-    parser.add_argument("--log-file", help="Archivo JSONL de auditoría.")
-    parser.add_argument("--no-log", action="store_true", help="Desactiva el registro de auditoría.")
+    parser.add_argument("--config-file", help="Path to a scanner configuration JSON file.")
+    parser.add_argument("--log-file", help="Audit JSONL file.")
+    parser.add_argument("--no-log", action="store_true", help="Disable audit logging.")
 
-    # Las opciones globales también se aceptan después del subcomando. SUPPRESS
-    # evita que los valores por defecto del subparser sobrescriban los del global.
+    # Global options are also accepted after the subcommand. SUPPRESS prevents
+    # subparser defaults from overriding the global values.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--home", default=argparse.SUPPRESS)
     common.add_argument("--signatures", default=argparse.SUPPRESS)
@@ -120,148 +120,148 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    scan = sub.add_parser("scan", help="Escanea archivos o carpetas.", parents=[common])
-    scan.add_argument("paths", nargs="+", help="Archivos o directorios a analizar.")
-    scan.add_argument("--no-heuristics", action="store_true", help="Desactiva la heurística.")
-    scan.add_argument("--no-yara", action="store_true", help="Desactiva reglas YARA.")
-    scan.add_argument("--max-size", type=int, metavar="MB", help="Tamaño máximo por archivo.")
-    scan.add_argument("--jobs", type=int, metavar="N", help="Hilos de escaneo (1 por defecto).")
+    scan = sub.add_parser("scan", help="Scan files or directories.", parents=[common])
+    scan.add_argument("paths", nargs="+", help="Files or directories to scan.")
+    scan.add_argument("--no-heuristics", action="store_true", help="Disable heuristics.")
+    scan.add_argument("--no-yara", action="store_true", help="Disable YARA rules.")
+    scan.add_argument("--max-size", type=int, metavar="MB", help="Maximum size per file.")
+    scan.add_argument("--jobs", type=int, metavar="N", help="Scanning threads (1 by default).")
     scan.add_argument(
-        "--no-containers", action="store_true", help="No descomprime ZIP/TAR/GZ/BZ2/XZ."
+        "--no-containers", action="store_true", help="Do not unpack ZIP/TAR/GZ/BZ2/XZ."
     )
-    scan.add_argument("--exclude", action="append", default=[], metavar="NAME", help="Excluir carpeta.")
-    scan.add_argument("--json", dest="json_path", metavar="FILE", help="Escribe el informe JSON.")
-    scan.add_argument("--quiet", action="store_true", help="Solo el resumen final.")
-    scan.add_argument("--verbose", action="store_true", help="Muestra cada archivo analizado.")
+    scan.add_argument("--exclude", action="append", default=[], metavar="NAME", help="Exclude a directory.")
+    scan.add_argument("--json", dest="json_path", metavar="FILE", help="Write the JSON report.")
+    scan.add_argument("--quiet", action="store_true", help="Only show the final summary.")
+    scan.add_argument("--verbose", action="store_true", help="Show each file scanned.")
     scan.add_argument(
         "--quarantine-found",
         action="store_true",
-        help="Mueve a cuarentena los archivos detectados (pedirá confirmación).",
+        help="Quarantine detected files (will ask for confirmation).",
     )
-    scan.add_argument("--yes", action="store_true", help="Confirma acciones sin preguntar.")
+    scan.add_argument("--yes", action="store_true", help="Confirm actions without prompting.")
     scan.add_argument(
         "--allowlist",
         metavar="FILE",
-        help="JSON de exclusiones adicional (se suma a la auto-exclusión).",
+        help="Additional allowlist JSON (added to the self-exclusion rules).",
     )
 
-    quarantine = sub.add_parser("quarantine", help="Gestiona la cuarentena.", parents=[common])
+    quarantine = sub.add_parser("quarantine", help="Manage quarantine.", parents=[common])
     qsub = quarantine.add_subparsers(dest="action", required=True)
-    qsub.add_parser("list", help="Lista entradas.")
-    qsub.add_parser("verify", help="Verifica hashes y MAC de todas las entradas.")
-    restore = qsub.add_parser("restore", help="Restaura una entrada.")
+    qsub.add_parser("list", help="List entries.")
+    qsub.add_parser("verify", help="Verify hashes and MACs of all entries.")
+    restore = qsub.add_parser("restore", help="Restore an entry.")
     restore.add_argument("id")
-    restore.add_argument("--overwrite", action="store_true", help="Sobrescribe si la ruta existe.")
-    delete = qsub.add_parser("delete", help="Elimina una entrada definitivamente.")
+    restore.add_argument("--overwrite", action="store_true", help="Overwrite if the path exists.")
+    delete = qsub.add_parser("delete", help="Permanently delete an entry.")
     delete.add_argument("id")
-    prune = qsub.add_parser("prune", help="Elimina entradas antiguas.")
+    prune = qsub.add_parser("prune", help="Remove old entries.")
     prune.add_argument("--days", type=int, default=30)
 
-    signatures = sub.add_parser("signatures", help="Gestiona la base de firmas.", parents=[common])
+    signatures = sub.add_parser("signatures", help="Manage the signature database.", parents=[common])
     ssub = signatures.add_subparsers(dest="action", required=True)
-    ssub.add_parser("info", help="Muestra estadísticas.")
-    ssub.add_parser("validate", help="Valida el archivo de firmas.")
-    sign = ssub.add_parser("sign", help="Firma el JSON de firmas con una clave privada Ed25519.")
-    sign.add_argument("--key", required=True, help="Clave privada PEM.")
-    sign.add_argument("--output", required=True, help="Archivo .sig de salida.")
-    update = ssub.add_parser("update", help="Descarga y verifica una base de firmas.")
+    ssub.add_parser("info", help="Show statistics.")
+    ssub.add_parser("validate", help="Validate the signature file.")
+    sign = ssub.add_parser("sign", help="Sign the signature JSON with an Ed25519 private key.")
+    sign.add_argument("--key", required=True, help="PEM private key.")
+    sign.add_argument("--output", required=True, help="Output .sig file.")
+    update = ssub.add_parser("update", help="Download and verify a signature database.")
     update.add_argument("--url", required=True)
     update.add_argument(
-        "--public-key", required=True, help="Clave pública PEM de confianza (obligatoria)."
+        "--public-key", required=True, help="Trusted PEM public key (required)."
     )
     update.add_argument(
-        "--signature-url", help="URL de la firma (por defecto: <url>.sig)."
+        "--signature-url", help="Signature URL (default: <url>.sig)."
     )
-    update.add_argument("--sha256", help="Hash SHA-256 esperado de la descarga.")
+    update.add_argument("--sha256", help="Expected SHA-256 hash of the download.")
 
-    feeds = sub.add_parser("feeds", help="Importa IOCs externos.", parents=[common])
+    feeds = sub.add_parser("feeds", help="Import external IOCs.", parents=[common])
     fs = feeds.add_subparsers(dest="action", required=True)
-    feed_import = fs.add_parser("import", help="Convierte un feed a signatures.json.")
-    feed_import.add_argument("file", help="Archivo CSV/JSON/MISP/lista de hashes.")
-    feed_import.add_argument("--source", default="feed", help="Nombre del origen (para los IDs).")
+    feed_import = fs.add_parser("import", help="Convert a feed to signatures.json.")
+    feed_import.add_argument("file", help="CSV/JSON/MISP/hash-list file.")
+    feed_import.add_argument("--source", default="feed", help="Source name (used for IDs).")
     feed_import.add_argument(
         "--format", choices=["auto", "csv", "json", "misp", "hashes"], default="auto"
     )
-    feed_import.add_argument("--revision", type=int, help="Fuerza una revisión concreta.")
-    feed_import.add_argument("--dry-run", action="store_true", help="No modifica la base.")
+    feed_import.add_argument("--revision", type=int, help="Force a specific revision.")
+    feed_import.add_argument("--dry-run", action="store_true", help="Do not modify the database.")
 
-    keys = sub.add_parser("keys", help="Gestiona claves Ed25519.", parents=[common])
+    keys = sub.add_parser("keys", help="Manage Ed25519 keys.", parents=[common])
     ksub = keys.add_subparsers(dest="action", required=True)
-    generate = ksub.add_parser("generate", help="Genera un par de claves.")
-    generate.add_argument("--private", required=True, help="Ruta de la clave privada PEM.")
-    generate.add_argument("--public", required=True, help="Ruta de la clave pública PEM.")
+    generate = ksub.add_parser("generate", help="Generate a key pair.")
+    generate.add_argument("--private", required=True, help="Path to the PEM private key.")
+    generate.add_argument("--public", required=True, help="Path to the PEM public key.")
 
-    service = sub.add_parser("service", help="Protección en tiempo real (servicio de Windows).", parents=[common])
+    service = sub.add_parser("service", help="Real-time protection (Windows service).", parents=[common])
     svc = service.add_subparsers(dest="action", required=True)
-    svc_install = svc.add_parser("install", help="Instala el servicio (requiere administrador).")
-    svc_install.add_argument("--paths", nargs="+", required=True, help="Rutas a vigilar.")
+    svc_install = svc.add_parser("install", help="Install the service (requires administrator privileges).")
+    svc_install.add_argument("--paths", nargs="+", required=True, help="Paths to monitor.")
     svc_install.add_argument(
         "--startup", choices=windows_service.STARTUP_MODES, default="auto"
     )
     svc_install.add_argument("--poll-interval", type=float, default=2.0)
-    svc.add_parser("remove", help="Desinstala el servicio.")
-    svc_start = svc.add_parser("start", help="Arranca el servicio.")
+    svc.add_parser("remove", help="Uninstall the service.")
+    svc_start = svc.add_parser("start", help="Start the service.")
     svc_start.add_argument("--wait", type=int, default=15)
-    svc_stop = svc.add_parser("stop", help="Detiene el servicio.")
+    svc_stop = svc.add_parser("stop", help="Stop the service.")
     svc_stop.add_argument("--wait", type=int, default=15)
-    svc.add_parser("status", help="Consulta el estado del servicio.")
-    svc.add_parser("run", help="Ejecuta el monitor en primer plano (depuración).")
+    svc.add_parser("status", help="Show the service status.")
+    svc.add_parser("run", help="Run the monitor in the foreground (debugging).")
 
-    monitor = sub.add_parser("monitor", help="Vigila rutas en tiempo real.", parents=[common])
-    monitor.add_argument("paths", nargs="+", help="Rutas a vigilar.")
+    monitor = sub.add_parser("monitor", help="Monitor paths in real time.", parents=[common])
+    monitor.add_argument("paths", nargs="+", help="Paths to monitor.")
     monitor.add_argument("--poll-interval", type=float, default=2.0)
     monitor.add_argument("--grace-period", type=float, default=0.5)
     monitor.add_argument(
         "--backend",
         choices=("native", "watchdog", "polling"),
         default=None,
-        help="Fuerza el backend de vigilancia (por defecto, el mejor disponible).",
+        help="Force the monitoring backend (default: best available).",
     )
     monitor.add_argument(
         "--notify",
         choices=("auto", "toast", "messagebox", "none"),
         default="auto",
-        help="Avisos de escritorio al detectar algo (por defecto, automático).",
+        help="Desktop notifications on detection (default: automatic).",
     )
 
-    sub.add_parser("gui", help="Abre la interfaz gráfica (tkinter).", parents=[common])
+    sub.add_parser("gui", help="Open the graphical interface (tkinter).", parents=[common])
 
-    history = sub.add_parser("history", help="Consulta el historial.", parents=[common])
+    history = sub.add_parser("history", help="View scan history.", parents=[common])
     history.add_argument("--limit", type=int, default=20)
-    history.add_argument("--findings", action="store_true", help="Muestra hallazgos recientes.")
+    history.add_argument("--findings", action="store_true", help="Show recent findings.")
 
     selftest = sub.add_parser(
-        "selftest", help="Prueba los detectores con archivos sintéticos.", parents=[common]
+        "selftest", help="Test the detectors with synthetic files.", parents=[common]
     )
-    selftest.add_argument("--keep", action="store_true", help="Conserva los archivos generados.")
+    selftest.add_argument("--keep", action="store_true", help="Keep the generated files.")
 
     integrity = sub.add_parser(
-        "integrity", help="Genera y verifica manifiestos de integridad.", parents=[common]
+        "integrity", help="Generate and verify integrity manifests.", parents=[common]
     )
     isub = integrity.add_subparsers(dest="action", required=True)
-    build_cmd = isub.add_parser("build", help="Genera un manifiesto SHA-256.")
-    build_cmd.add_argument("root", nargs="?", default=".", help="Directorio a registrar.")
-    build_cmd.add_argument("--output", required=True, help="Ruta del JSON de manifiesto.")
+    build_cmd = isub.add_parser("build", help="Generate a SHA-256 manifest.")
+    build_cmd.add_argument("root", nargs="?", default=".", help="Directory to record.")
+    build_cmd.add_argument("--output", required=True, help="Path to the manifest JSON.")
     build_cmd.add_argument(
         "--exclude",
         action="append",
         default=[],
-        metavar="PATRON",
-        help="Patrón adicional a excluir (se puede repetir).",
+        metavar="PATTERN",
+        help="Additional pattern to exclude (can be repeated).",
     )
-    verify_cmd = isub.add_parser("verify", help="Compara un directorio con su manifiesto.")
-    verify_cmd.add_argument("root", nargs="?", default=".", help="Directorio a verificar.")
-    verify_cmd.add_argument("--manifest", required=True, help="JSON de manifiesto.")
+    verify_cmd = isub.add_parser("verify", help="Compare a directory with its manifest.")
+    verify_cmd.add_argument("root", nargs="?", default=".", help="Directory to verify.")
+    verify_cmd.add_argument("--manifest", required=True, help="Manifest JSON.")
     verify_cmd.add_argument(
         "--public-key",
-        help="Clave pública Ed25519; si se da, verifica también <manifest>.sig.",
+        help="Ed25519 public key; if provided, also verify <manifest>.sig.",
     )
 
-    audit = sub.add_parser("audit", help="Autoevaluación de seguridad.", parents=[common])
+    audit = sub.add_parser("audit", help="Security self-assessment.", parents=[common])
     audit.add_argument(
         "--public-key",
-        help="Clave pública PEM para verificar <signatures>.sig "
-        "(equivale a SENTINEL_PUBLIC_KEY).",
+        help="PEM public key for verifying <signatures>.sig "
+        "(equivalent to SENTINEL_PUBLIC_KEY).",
     )
 
     return parser
@@ -321,25 +321,25 @@ def _load_yara(config: ScanConfig) -> object | None:
     try:
         return YaraEngine(rules)
     except (OSError, ValueError, YaraUnavailable) as exc:
-        print(f"[advertencia] YARA desactivado: {exc}", file=sys.stderr)
+        print(f"[warning] YARA disabled: {exc}", file=sys.stderr)
         return None
 
 
 def print_report(result: ScanResult, colors: Colors, *, quiet: bool = False) -> None:
     findings = result.sorted_findings()
-    print(f"\n{colors.bold}INFORME DE ESCANEO{colors.reset}")
-    print(f"  Inicio     : {result.started_at}")
-    print(f"  Duración   : {result.duration_seconds:.2f} s")
-    print(f"  Archivos   : {result.files_scanned}  ({human_size(result.bytes_scanned)})")
-    print(f"  Omitidos   : {result.skipped}")
-    print(f"  Excluidos  : {result.allowed}")
-    print(f"  Contenedor : {result.container_entries} entradas")
-    print(f"  Errores    : {len(result.errors)}")
+    print(f"\n{colors.bold}SCAN REPORT{colors.reset}")
+    print(f"  Started    : {result.started_at}")
+    print(f"  Duration   : {result.duration_seconds:.2f} s")
+    print(f"  Files      : {result.files_scanned}  ({human_size(result.bytes_scanned)})")
+    print(f"  Skipped    : {result.skipped}")
+    print(f"  Allowed    : {result.allowed}")
+    print(f"  Container  : {result.container_entries} entries")
+    print(f"  Errors     : {len(result.errors)}")
 
     if not findings:
-        print(f"\n{colors.green}No se encontraron amenazas.{colors.reset}")
+        print(f"\n{colors.green}No threats found.{colors.reset}")
     else:
-        print(f"\n{colors.red}{colors.bold}{len(findings)} hallazgo(s):{colors.reset}")
+        print(f"\n{colors.red}{colors.bold}{len(findings)} finding(s):{colors.reset}")
         for finding in findings:
             tone = colors.severity(finding.severity)
             print(f"  {tone}[{finding.severity.value.upper()}]{colors.reset} {finding.rule_id} "
@@ -347,11 +347,11 @@ def print_report(result: ScanResult, colors: Colors, *, quiet: bool = False) -> 
             print(f"      {finding.path}")
             print(f"      {finding.description}")
             if finding.indicators:
-                print(f"      {colors.dim}indicadores: {', '.join(finding.indicators[:6])}{colors.reset}")
+                print(f"      {colors.dim}indicators: {', '.join(finding.indicators[:6])}{colors.reset}")
             if finding.sha256:
                 print(f"      {colors.dim}sha256: {finding.sha256}{colors.reset}")
             if finding.quarantined:
-                print(f"      {colors.yellow}en cuarentena ({finding.quarantine_id}){colors.reset}")
+                print(f"      {colors.yellow}quarantined ({finding.quarantine_id}){colors.reset}")
     for error in result.errors[:10]:
         print(f"  {colors.yellow}! {error['path']}: {error['error']}{colors.reset}", file=sys.stderr)
 
@@ -384,11 +384,11 @@ def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> i
     stats = signatures.stats()
     if not args.quiet:
         print(f"{colors.bold}Sentinel {__version__}{colors.reset}")
-        print(f"  Firmas: v{stats['version']} · {stats['hashes']} hashes · "
-              f"{stats['filename_rules']} nombres · {stats['content_rules']} contenido")
-        print(f"  Objetivos: {len(args.paths)}")
-        print(f"  Exclusiones: {allowlist.stats()['directories']} dirs, "
-              f"{allowlist.stats()['paths']} archivos, {allowlist.stats()['globs']} globs")
+        print(f"  Signatures: v{stats['version']} · {stats['hashes']} hashes · "
+              f"{stats['filename_rules']} names · {stats['content_rules']} content")
+        print(f"  Targets: {len(args.paths)}")
+        print(f"  Exclusions: {allowlist.stats()['directories']} dirs, "
+              f"{allowlist.stats()['paths']} files, {allowlist.stats()['globs']} globs")
 
     def progress(event: str, path: str, count: int) -> None:
         if args.quiet:
@@ -397,7 +397,7 @@ def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> i
             mark = {"file": "·", "skip": "-", "error": "!", "finding": "*"}.get(event, "?")
             print(f"  {mark} {path}")
         elif event == "file" and count % 100 == 0:
-            print(f"  ... {count} archivos", file=sys.stderr)
+            print(f"  ... {count} files", file=sys.stderr)
 
     result = scanner.scan(args.paths, progress)
     quarantine_ids: list[str] = []
@@ -408,12 +408,12 @@ def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> i
         for finding in result.findings:
             targets.setdefault(finding.path, []).append(finding)
         if not args.yes:
-            answer = input(f"¿Enviar {len(targets)} archivo(s) a cuarentena? [s/N] ")
-            if answer.strip().lower() not in {"s", "si", "sí", "y", "yes"}:
-                print("Operación cancelada; los archivos no se movieron.")
+            answer = input(f"Quarantine {len(targets)} file(s)? [y/N] ")
+            if answer.strip().lower() not in {"y", "yes"}:
+                print("Operation canceled; files were not moved.")
         else:
-            answer = "s"
-        if answer.strip().lower() in {"s", "si", "sí", "y", "yes"}:
+            answer = "y"
+        if answer.strip().lower() in {"y", "yes"}:
             for path, items in targets.items():
                 if not Path(path).is_file():
                     continue
@@ -437,7 +437,7 @@ def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> i
     logger.scan_finish({"scan_id": scan_id, **summarize(result)})
 
     print_report(result, colors, quiet=args.quiet)
-    print(f"\n  ID de escaneo: {scan_id}")
+    print(f"\n  Scan ID: {scan_id}")
 
     if args.json_path:
         payload = json.dumps(result.to_dict(), indent=2, ensure_ascii=False)
@@ -446,7 +446,7 @@ def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> i
         else:
             Path(args.json_path).write_text(payload, encoding="utf-8")
             _remember_report(home, args.json_path)
-            print(f"  Informe JSON: {args.json_path}")
+            print(f"  JSON report: {args.json_path}")
 
     if result.errors:
         return EXIT_ERROR
@@ -458,25 +458,25 @@ def cmd_quarantine(args: argparse.Namespace, colors: Colors, logger: AuditLogger
     if args.action == "list":
         entries = store.list()
         if not entries:
-            print("La cuarentena está vacía.")
+            print("Quarantine is empty.")
             return EXIT_CLEAN
         integrity = {entry.id: error for entry, error in store.verify_all()}
         for entry in entries:
             exists = Path(entry.stored_path).is_file()
             state = colors.green if exists else colors.red
             print(f"  {state}{entry.id}{colors.reset}  {entry.original_name}")
-            print(f"      origen : {entry.original_path}")
-            print(f"      motivo : {entry.reason}  ·  {entry.quarantined_at}")
+            print(f"      origin : {entry.original_path}")
+            print(f"      reason : {entry.reason}  ·  {entry.quarantined_at}")
             if integrity[entry.id]:
-                print(f"      {colors.red}INTEGRIDAD: {integrity[entry.id]}{colors.reset}")
+                print(f"      {colors.red}INTEGRITY: {integrity[entry.id]}{colors.reset}")
         return EXIT_ERROR if any(integrity.values()) else EXIT_CLEAN
 
     if args.action == "verify":
         checked = store.verify_all()
         if not checked:
-            print("La cuarentena está vacía.")
+            print("Quarantine is empty.")
         for entry, error in checked:
-            state = f"{colors.red}ALTERADA: {error}" if error else f"{colors.green}OK"
+            state = f"{colors.red}ALTERED: {error}" if error else f"{colors.green}OK"
             print(f"  {entry.id}  {state}{colors.reset}")
         logger.emit("quarantine.verify", altered=sum(bool(error) for _, error in checked))
         return EXIT_ERROR if any(error for _, error in checked) else EXIT_CLEAN
@@ -485,15 +485,15 @@ def cmd_quarantine(args: argparse.Namespace, colors: Colors, logger: AuditLogger
         if args.action == "restore":
             path = store.restore(args.id, overwrite=args.overwrite)
             logger.emit("quarantine.restore", id=args.id, path=str(path))
-            print(f"Restaurado: {path}")
+            print(f"Restored: {path}")
         elif args.action == "delete":
             store.delete(args.id)
             logger.emit("quarantine.delete", id=args.id)
-            print("Entrada eliminada definitivamente.")
+            print("Entry permanently deleted.")
         elif args.action == "prune":
             count = store.prune(args.days)
             logger.emit("quarantine.prune", days=args.days, removed=count)
-            print(f"Entradas eliminadas: {count}")
+            print(f"Entries removed: {count}")
     except (KeyError, ValueError, OSError, QuarantineIntegrityError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -507,9 +507,9 @@ def cmd_signatures(args: argparse.Namespace, logger: AuditLogger) -> int:
             signature = crypto.sign_payload(path.read_bytes(), args.key)
             Path(args.output).write_bytes(signature)
         except (OSError, ValueError, TypeError, crypto.SigningUnavailable) as exc:
-            print(f"Error al firmar: {exc}", file=sys.stderr)
+            print(f"Signing failed: {exc}", file=sys.stderr)
             return EXIT_ERROR
-        print(f"Firma guardada en {args.output} ({len(signature)} bytes)")
+        print(f"Signature saved to {args.output} ({len(signature)} bytes)")
         return EXIT_CLEAN
 
     if args.action == "update":
@@ -527,11 +527,11 @@ def cmd_signatures(args: argparse.Namespace, logger: AuditLogger) -> int:
             TypeError,
             KeyError,
             crypto.SigningUnavailable,
-        ) as exc:  # red, firma, hash, formato
-            print(f"Error al actualizar: {exc}", file=sys.stderr)
+        ) as exc:  # network, signature, hash, format
+            print(f"Update failed: {exc}", file=sys.stderr)
             return EXIT_ERROR
-        print(f"Base actualizada y verificada: {info['destination']}")
-        print(f"  revisión: {info['revision']}")
+        print(f"Database updated and verified: {info['destination']}")
+        print(f"  revision: {info['revision']}")
         logger.emit(
             "signatures.update",
             revision=info["revision"],
@@ -539,12 +539,12 @@ def cmd_signatures(args: argparse.Namespace, logger: AuditLogger) -> int:
             url=args.url,
         )
         print(f"  sha256: {info['sha256']}")
-        print(f"  firmas: {info['stats']['hashes']} hashes")
+        print(f"  signatures: {info['stats']['hashes']} hashes")
         return EXIT_CLEAN
     try:
         database = SignatureDatabase.load(path)
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-        print(f"Base de firmas inválida: {exc}", file=sys.stderr)
+        print(f"Invalid signature database: {exc}", file=sys.stderr)
         return EXIT_ERROR
     if args.action == "validate":
         print(f"{path}: OK")
@@ -562,20 +562,20 @@ def cmd_history(args: argparse.Namespace) -> int:
     else:
         rows = database.list_scans(args.limit)
         if not rows:
-            print("Sin escaneos registrados.")
+            print("No scans recorded.")
         for row in rows:
             print(
                 f"  #{row['id']}  {row['started_at']}  "
-                f"{row['files_scanned']} archivos  max={row['max_severity'] or '-'}"
+                f"{row['files_scanned']} files  max={row['max_severity'] or '-'}"
             )
     return EXIT_CLEAN
 
 
 def cmd_selftest(args: argparse.Namespace, colors: Colors) -> int:
     directory = Path(tempfile.mkdtemp(prefix="sentinel-selftest-"))
-    print(f"Directorio de prueba: {directory}")
-    (directory / "informe.pdf.exe").write_bytes(b"synthetic sample\n")
-    (directory / "marker.txt").write_bytes(b"SENTINEL_TEST_MARKER payload de prueba\n")
+    print(f"Test directory: {directory}")
+    (directory / "report.pdf.exe").write_bytes(b"synthetic sample\n")
+    (directory / "marker.txt").write_bytes(b"SENTINEL_TEST_MARKER test payload\n")
     (directory / "random.bin").write_bytes(os.urandom(8192))
 
     signatures = SignatureDatabase.load(Path(args.signatures))
@@ -584,16 +584,16 @@ def cmd_selftest(args: argparse.Namespace, colors: Colors) -> int:
     rules = {finding.rule_id for finding in result.findings}
 
     checks = {
-        "regla de contenido": "TEST-CONTENT-MARKER" in rules,
-        "doble extensión": "HEUR-DOUBLE-EXT" in rules,
-        "entropía alta": "HEUR-ENTROPY" in rules,
+        "content rule": "TEST-CONTENT-MARKER" in rules,
+        "double extension": "HEUR-DOUBLE-EXT" in rules,
+        "high entropy": "HEUR-ENTROPY" in rules,
     }
     for name, passed in checks.items():
-        print(f"  {colors.green if passed else colors.red}{'OK' if passed else 'FALLO'}{colors.reset}  {name}")
+        print(f"  {colors.green if passed else colors.red}{'OK' if passed else 'FAIL'}{colors.reset}  {name}")
 
     if not args.keep:
         shutil.rmtree(directory, ignore_errors=True)
-        print("Directorio temporal eliminado.")
+        print("Temporary directory removed.")
     return EXIT_CLEAN if all(checks.values()) else EXIT_ERROR
 
 
@@ -608,13 +608,13 @@ def cmd_feeds(args: argparse.Namespace, logger: AuditLogger) -> int:
             dry_run=args.dry_run,
         )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        print(f"Error al importar el feed: {exc}", file=sys.stderr)
+        print(f"Feed import failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    print(f"Feed importado ({report.fmt}): {report.parsed} registros leídos")
-    print(f"  hashes: {report.added_hashes} · nombres: {report.added_filenames} "
-          f"· contenido: {report.added_content}")
-    print(f"  duplicados: {report.duplicates} · errores: {len(report.errors)}")
-    print(f"  revisión: {report.revision}{' (simulación)' if report.dry_run else ''}")
+    print(f"Feed imported ({report.fmt}): {report.parsed} records read")
+    print(f"  hashes: {report.added_hashes} · names: {report.added_filenames} "
+          f"· content: {report.added_content}")
+    print(f"  duplicates: {report.duplicates} · errors: {len(report.errors)}")
+    print(f"  revision: {report.revision}{' (dry run)' if report.dry_run else ''}")
     for error in report.errors[:10]:
         print(f"  ! {error}", file=sys.stderr)
     logger.emit(
@@ -632,10 +632,10 @@ def cmd_keys(args: argparse.Namespace) -> int:
     try:
         crypto.generate_keypair(args.private, args.public)
     except (OSError, ValueError, crypto.SigningUnavailable) as exc:
-        print(f"Error al generar claves: {exc}", file=sys.stderr)
+        print(f"Key generation failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    print(f"Clave privada: {args.private} (guárdala fuera del equipo escaneado)")
-    print(f"Clave pública : {args.public} (distribúyela con el cliente)")
+    print(f"Private key: {args.private} (store it outside the scanned machine)")
+    print(f"Public key  : {args.public} (distribute it with the client)")
     return EXIT_CLEAN
 
 
@@ -653,8 +653,8 @@ def cmd_monitor(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -
         return EXIT_ERROR
     if args.backend and args.backend not in available_backends():
         print(
-            f"Error: el backend '{args.backend}' no está disponible. "
-            f"Disponibles: {', '.join(available_backends())}",
+            f"Error: backend '{args.backend}' is not available. "
+            f"Available: {', '.join(available_backends())}",
             file=sys.stderr,
         )
         return EXIT_ERROR
@@ -689,15 +689,15 @@ def cmd_monitor(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -
         notify=notifier.backend,
     )
     print(
-        f"Vigilando {len(args.paths)} ruta(s) con backend '{monitor.backend}' "
-        f"y avisos '{notifier.backend}'. Ctrl+C para salir."
+        f"Monitoring {len(args.paths)} path(s) with backend '{monitor.backend}' "
+        f"and notifications '{notifier.backend}'. Press Ctrl+C to exit."
     )
     monitor.start()
     try:
         while monitor.is_alive:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nDeteniendo la monitorización...")
+        print("\nStopping monitoring...")
     finally:
         monitor.stop()
     return EXIT_CLEAN
@@ -710,32 +710,32 @@ def cmd_gui(args: argparse.Namespace) -> int:
         config = ScanConfig.from_file(args.config_file) if args.config_file else ScanConfig()
         SentinelGUI(args.home, args.signatures, config=config).run()
     except (ImportError, OSError, ValueError, TypeError) as exc:
-        print(f"No se pudo abrir la interfaz gráfica: {exc}", file=sys.stderr)
+        print(f"Could not open the graphical interface: {exc}", file=sys.stderr)
         return EXIT_ERROR
     return EXIT_CLEAN
 
 
 def cmd_integrity(args: argparse.Namespace, logger: AuditLogger) -> int:
-    """Genera o comprueba un manifiesto de integridad de archivos."""
+    """Generate or verify a file integrity manifest."""
     if args.action == "build":
         manifest = build_manifest(args.root, args.output, args.exclude)
         total = len(manifest["files"])
         logger.emit("integrity.build", output=args.output, files=total)
-        print(f"Manifiesto generado: {args.output} ({total} archivos).")
+        print(f"Manifest generated: {args.output} ({total} files).")
         return EXIT_CLEAN
 
     report = verify_manifest(args.root, args.manifest)
     signature_ok: bool | None = None
     if args.public_key:
         signature_ok = verify_signatures_bundle(args.manifest, args.public_key)
-        estado = "válida" if signature_ok else "inválida o ausente"
-        print(f"Firma del manifiesto: {estado}.")
+        status = "valid" if signature_ok else "invalid or missing"
+        print(f"Manifest signature: {status}.")
 
-    estado = "OK" if report.ok else "FALLÓ"
+    status = "OK" if report.ok else "FAILED"
     print(
-        f"Integridad: {estado} | esperados={report.expected} "
-        f"borrados={report.missing} modificados={report.modified} "
-        f"añadidos={report.added}"
+        f"Integrity: {status} | expected={report.expected} "
+        f"missing={report.missing} modified={report.modified} "
+        f"added={report.added}"
     )
     for item in report.details:
         print(f"  {item['status']}: {item['path']}")
@@ -755,20 +755,20 @@ def cmd_integrity(args: argparse.Namespace, logger: AuditLogger) -> int:
 
 
 def cmd_audit(args: argparse.Namespace, logger: AuditLogger) -> int:
-    """Ejecuta la autoevaluación de seguridad del despliegue."""
+    """Run the security self-assessment of the deployment."""
     from .audit import run_security_audit
 
     if getattr(args, "public_key", None):
         os.environ["SENTINEL_PUBLIC_KEY"] = args.public_key
     report = run_security_audit(args.home, args.signatures)
 
-    print(f"\nAUDITORÍA DE SEGURIDAD  {report.score}/100")
+    print(f"\nSECURITY AUDIT  {report.score}/100")
     for check in report.checks:
-        state = "OK" if check.passed else "FALLO"
+        state = "OK" if check.passed else "FAIL"
         print(f"  [{state}] {check.name}: {check.detail}")
         if not check.passed and check.remediation:
             print(f"         -> {check.remediation}")
-    print(f"  Resultado: {len(report.failures)} fallo(s) de {len(report.checks)} checks")
+    print(f"  Result: {len(report.failures)} failure(s) out of {len(report.checks)} checks")
     logger.emit(
         "audit.result",
         passed=report.passed,
@@ -790,22 +790,22 @@ def cmd_service(args: argparse.Namespace, logger: AuditLogger) -> int:
             )
             windows_service.install(args.home, startup=args.startup)
             logger.emit("service.install", config=str(destination), startup=args.startup)
-            print(f"Servicio {windows_service.SERVICE_NAME} instalado ({args.startup}).")
-            print(f"Configuración: {destination}")
+            print(f"Service {windows_service.SERVICE_NAME} installed ({args.startup}).")
+            print(f"Configuration: {destination}")
         elif args.action == "remove":
             windows_service.remove()
             logger.emit("service.remove")
-            print("Servicio desinstalado.")
+            print("Service uninstalled.")
         elif args.action == "start":
             windows_service.start(args.wait)
             logger.emit("service.start")
-            print("Servicio en ejecución.")
+            print("Service running.")
         elif args.action == "stop":
             windows_service.stop(args.wait)
             logger.emit("service.stop")
-            print("Servicio detenido.")
+            print("Service stopped.")
         elif args.action == "status":
-            print(f"Servicio {windows_service.SERVICE_NAME}: {windows_service.status()}")
+            print(f"Service {windows_service.SERVICE_NAME}: {windows_service.status()}")
         elif args.action == "run":
             return windows_service.run_foreground(args.home)
     except (
@@ -815,10 +815,10 @@ def cmd_service(args: argparse.Namespace, logger: AuditLogger) -> int:
         OSError,
         json.JSONDecodeError,
     ) as exc:
-        print(f"Error en el servicio: {exc}", file=sys.stderr)
+        print(f"Service error: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    except Exception as exc:  # noqa: BLE001 - pywintypes.error no deriva de OSError
-        print(f"Error en el servicio: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - pywintypes.error does not derive from OSError
+        print(f"Service error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     return EXIT_CLEAN
 
@@ -857,7 +857,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.emit("command", name=args.command)
         return handlers[args.command]()
     except KeyboardInterrupt:
-        print("\nInterrumpido.", file=sys.stderr)
+        print("\nInterrupted.", file=sys.stderr)
         return EXIT_ERROR
     except (
         OSError,

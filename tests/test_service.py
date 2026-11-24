@@ -5,7 +5,7 @@ import pytest
 from sentinel import service as windows_service
 from sentinel.cli import main
 
-SIGNATURES = "C:\\firmas\\signatures.json"
+SIGNATURES = "C:\\signatures\\signatures.json"
 
 
 def test_save_and_load_config(tmp_path):
@@ -28,25 +28,25 @@ def test_config_validation(tmp_path):
     with pytest.raises(ValueError):
         windows_service.save_config(tmp_path, paths=["C:\\tmp"], poll_interval=0)
     with pytest.raises(windows_service.ServiceUnavailable):
-        windows_service.load_config(tmp_path / "sin-config")
+        windows_service.load_config(tmp_path / "no-config")
 
     broken = tmp_path / "service.json"
-    broken.write_text("no es json", encoding="utf-8")
+    broken.write_text("not json", encoding="utf-8")
     with pytest.raises((ValueError, TypeError)):
         windows_service.load_config(tmp_path)
 
 
 def test_service_home_pointer_roundtrip(tmp_path, monkeypatch):
-    puntero = tmp_path / "ProgramData" / "sentinel" / "service_home.txt"
-    monkeypatch.setattr(windows_service, "SERVICE_HOME_POINTER", puntero)
+    pointer = tmp_path / "ProgramData" / "sentinel" / "service_home.txt"
+    monkeypatch.setattr(windows_service, "SERVICE_HOME_POINTER", pointer)
     home = tmp_path / "home"
 
     windows_service.save_service_home(home)
-    assert puntero.read_text(encoding="utf-8") == str(home.resolve())
+    assert pointer.read_text(encoding="utf-8") == str(home.resolve())
     assert windows_service.load_service_home() == home.resolve()
 
     windows_service.clear_service_home()
-    assert not puntero.exists()
+    assert not pointer.exists()
     assert windows_service.load_service_home() == windows_service.DEFAULT_HOME
 
 
@@ -74,13 +74,13 @@ def test_cli_service_install_writes_config(tmp_path, monkeypatch, capsys):
             "service",
             "install",
             "--paths",
-            "C:\\Descargas",
+            "C:\\Downloads",
             "--startup",
             "manual",
         ]
     ) == 0
     assert saved == {"home": str(tmp_path), "startup": "manual"}
     config = windows_service.load_config(tmp_path)
-    assert config["paths"] == ["C:\\Descargas"]
+    assert config["paths"] == ["C:\\Downloads"]
     assert (tmp_path / "audit.jsonl").is_file()
     capsys.readouterr()

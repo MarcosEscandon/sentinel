@@ -1,219 +1,215 @@
-# Modelo de amenazas de Sentinel (prototipo)
+# Sentinel threat model (prototype)
 
-Este documento describe qué protege hoy Sentinel, qué no protege y qué queda
-pendiente. Se basa en el código del repositorio, no en un producto certificado.
-**No hay control de kernel ni verificación de confianza de ejecutables**: el
-escáner es un proceso de usuario que lee archivos y aplica reglas.
+This document describes what Sentinel protects today, what it does not protect
+and what remains outstanding. It is based on the repository code, not on a
+certified product. **There is no kernel control and no executable trust
+verification**: the scanner is a user process that reads files and applies
+rules.
 
-## Alcance
+## Scope
 
-- Python 3.10, objetivo Windows; los módulos puros funcionan también en otros SO.
-- Análisis bajo demanda (`scan`), monitorización en tiempo real (`monitor` /
-  servicio de Windows opcional) y cuarentena reversible.
-- Base de firmas JSON (`sentinel/data/signatures.json`, revisión 3) con 11
-  hashes (EICAR y diez IOCs públicos) y 2 reglas de contenido, una de ellas
-  sintética (`SENTINEL_TEST_MARKER`), con firma `.sig` y clave pública `.pub`.
-- Autoevaluación `sentinel/audit.py`, integrada como subcomando `sentinel audit`
-  (diez comprobaciones).
+- Python 3.10, Windows target; the pure modules also work on other OSes.
+- On-demand analysis (`scan`), real-time monitoring (`monitor` / optional
+  Windows service) and reversible quarantine.
+- JSON signature database (`sentinel/data/signatures.json`, revision 3) with 11
+  hashes (EICAR and ten public IOCs) and 2 content rules, one of them synthetic
+  (`SENTINEL_TEST_MARKER`), with a `.sig` signature and a `.pub` public key.
+- `sentinel/audit.py` self-assessment, integrated as the `sentinel audit`
+  subcommand (ten checks).
 
-Fuera de alcance: protección contra un atacante que ya es administrador,
-prevención de ejecución, sandboxing, reputación en la nube y respuesta
-automática a incidentes.
+Out of scope: protection against an attacker who is already an administrator,
+execution prevention, sandboxing, cloud reputation and automated incident
+response.
 
-## Activos
+## Assets
 
-| Activo | Ubicación / forma | Por qué importa |
+| Asset | Location / form | Why it matters |
 | --- | --- | --- |
-| Base de firmas | `signatures.json`, revisión, hashes y reglas | Define qué se detecta; manipularla genera falsos negativos |
-| Firma y ancla de confianza | `<base>.sig`, clave pública PEM | Cadena de confianza de las actualizaciones |
-| Clave de cuarentena | `<home>/quarantine.key` (HMAC-SHA256) | Detecta manipulación del índice de cuarentena |
-| Cuarentena | `<home>/quarantine/index.json`, `files/*.qtn` | Contiene malware real; su integridad decide si una restauración es segura |
-| Registro de auditoría | `<home>/audit.jsonl` | Evidencia de escaneos, hallazgos y acciones |
-| Historial | `<home>/history.db` (SQLite) | Resultados y métricas pasadas |
-| Exclusiones | `allowlist.json` y `AllowList.for_self()` | Evitan falsos positivos y auto-detección; también pueden ocultar malware |
-| Configuración del escáner | `--config-file` / `ScanConfig` | Límites anti-bomba; valores erróneos permiten abusos de recursos |
-| Código y dependencias instaladas | paquete `sentinel`, extras opcionales | Superficie de *supply chain* |
-| Servicio y monitor | `RealtimeMonitor`, servicio de Windows | Proceso con acceso continuo a las rutas vigiladas |
+| Signature database | `signatures.json`, revision, hashes and rules | Defines what is detected; tampering with it creates false negatives |
+| Signature and trust anchor | `<base>.sig`, PEM public key | Trust chain for updates |
+| Quarantine key | `<home>/quarantine.key` (HMAC-SHA256) | Detects tampering with the quarantine index |
+| Quarantine | `<home>/quarantine/index.json`, `files/*.qtn` | Contains real malware; its integrity determines whether a restore is safe |
+| Audit log | `<home>/audit.jsonl` | Evidence of scans, findings and actions |
+| History | `<home>/history.db` (SQLite) | Past results and metrics |
+| Exclusions | `allowlist.json` and `AllowList.for_self()` | Prevent false positives and self-detection; they can also hide malware |
+| Scanner configuration | `--config-file` / `ScanConfig` | Anti-bomb limits; wrong values allow resource abuse |
+| Installed code and dependencies | `sentinel` package, optional extras | Supply chain surface |
+| Service and monitor | `RealtimeMonitor`, Windows service | Process with continuous access to the watched paths |
 
-## Actores
+## Actors
 
-- **Usuario local**: ejecuta escaneos, puede configurar exclusiones y restaurar
-  archivos de la cuarentena si tiene acceso a la home.
-- **Proceso malicioso con privilegios del usuario**: puede escribir en la home,
-  borrar logs, modificar la allowlist o terminar el proceso del monitor.
-- **Administrador local**: puede instalar el servicio, cambiar ACLs y parar la
-  protección; asumir lo contrario sería engañarse.
-- **Atacante que entrega archivos** (descargas, correo, USB): controla el
-  contenido analizado, no el equipo.
-- **Atacante de red / servidor de actualizaciones**: puede servir un JSON
-  modificado o una revisión antigua si la cadena de confianza falla.
-- **Operador/auditor**: consume informes y decide si el equipo puede operar.
+- **Local user**: runs scans, can configure exclusions and restore files from
+  quarantine if they have access to the home.
+- **Malicious process with user privileges**: can write to the home, delete
+  logs, modify the allowlist or terminate the monitor process.
+- **Local administrator**: can install the service, change ACLs and stop
+  protection; assuming otherwise would be self-deception.
+- **File-delivery attacker** (downloads, email, USB): controls the analyzed
+  content, not the machine.
+- **Network / update-server attacker**: can serve a modified JSON or an older
+  revision if the trust chain fails.
+- **Operator/auditor**: consumes reports and decides whether the machine can
+  operate.
 
-## Superficie de ataque
+## Attack surface
 
-1. **Datos analizados**: PE (`engine/heuristics.py`), OLE2/CFB (`engine/ole.py`),
-   ZIP/TAR/GZ/BZ2/XZ
-   (`engine/containers.py`), OLE, expresiones regulares de contenido, reglas
-   YARA opcionales y cálculo de entropía.
-2. **Rutas**: symlinks, junctions y reparse points; rutas relativas, nombres
-   largos y directorios excluidos.
-3. **Archivos de configuración**: JSON de firmas, feeds importados
-   (`feeds.py`), allowlist, `ScanConfig` y `config.example.json`.
-4. **Canal de actualización**: HTTP/HTTPS y firma separada
-   (`updates.py`).
-5. **Estado persistente**: índice y clave de cuarentena, `audit.jsonl`,
-   `history.db`, informes JSON.
-6. **Interfaz y servicio**: GUI tkinter, notificaciones y servicio de Windows.
+1. **Analyzed data**: PE (`engine/heuristics.py`), OLE2/CFB (`engine/ole.py`),
+   ZIP/TAR/GZ/BZ2/XZ (`engine/containers.py`), OLE, content regular expressions,
+   optional YARA rules and entropy calculation.
+2. **Paths**: symlinks, junctions and reparse points; relative paths, long names
+   and excluded directories.
+3. **Configuration files**: signature JSON, imported feeds (`feeds.py`),
+   allowlist, `ScanConfig` and `config.example.json`.
+4. **Update channel**: HTTP/HTTPS and separate signature (`updates.py`).
+5. **Persistent state**: quarantine index and key, `audit.jsonl`, `history.db`,
+   JSON reports.
+6. **Interface and service**: tkinter GUI, notifications and Windows service.
 
-## Amenazas mitigadas (controles que existen realmente)
+## Mitigated threats (controls that actually exist)
 
-| Amenaza | Control implementado | Dónde | Límite honesto |
+| Threat | Implemented control | Where | Honest limit |
 | --- | --- | --- | --- |
-| Malware conocido por hash/contenido/nombre | Coincidencia de SHA-256, regex sobre bytes y nombres | `engine/signatures.py` | Solo cubre lo que contenga la base; no hay detección en la nube |
-| Archivo EICAR/IOC sintético de prueba | Hash y regla de contenido incluidos | `data/signatures.json` | Es una prueba funcional, no cobertura de malware real |
-| Ofuscación por contenedores | Descompresión con límites de entradas, tamaño, ratio y profundidad | `engine/containers.py`, `ScanConfig` | No analiza formatos anidados más allá de `container_max_depth` |
-| ReDoS en reglas de contenido | `regex` con `timeout` por regla y envío de `RULE-TIMEOUT` | `engine/signatures.py` | Sin el extra `hardening` se usa `re`, sin límite de tiempo |
-| Bucles y evasión por enlaces | `follow_symlinks=False` y rechazo de reparse points en el monitor nativo | `config.py`, `realtime.py` | La decisión depende de las API de Windows disponibles |
-| Auto-detección del propio producto | `AllowList.for_self([home, raíz del paquete])` | `core/allowlist.py`, CLI | Una allowlist mal editada puede eximir rutas maliciosas |
-| Modificación del índice de cuarentena | HMAC-SHA256 con clave fuera del directorio y `verify_all()` | `core/quarantine.py` | La clave se guarda en texto plano; un atacante con acceso a la home puede leerla y recalcular el MAC |
-| Restauración de un archivo alterado | `verify_entry()` compara tamaño y SHA-256 almacenado | `core/quarantine.py` | No cifra el contenido; `delete()`/`prune()` siguen funcionando aunque haya alteración |
-| Rollback de firmas | `check_rollback()` y revisión creciente en actualizaciones | `engine/signatures.py`, `updates.py` | `SignatureDatabase.load()` por sí solo **no** exige firma ni revisión |
-| Actualización no firmada o corrupta | Firma Ed25519 obligatoria con clave pública, hash opcional y sustitución atómica con `.bak` | `updates.py` | La clave pública se distribuye a mano; no hay rotación, pinning por builds ni Transparency Log |
-| Errores de parseo de un archivo hostile | Captura de errores por archivo y límites de tamaño | `engine/scanner.py`, `ScanConfig` | Un error se registra como `errors`, no mata el escaneo |
-| Pérdida de visibilidad | Eventos JSONL de escaneo, hallazgos, cuarentena y comandos | `core/logging.py` | Sin firma, cifrado, rotación ni retención inmutable |
-| Configuración insegura detectada tarde | `audit.py` valida base, firma, cuarentena, logs, exclusiones, backend y límites | `sentinel/audit.py` | Es una comprobación puntual, no un control en tiempo de ejecución |
+| Malware known by hash/content/name | SHA-256 matching, regex over bytes and names | `engine/signatures.py` | Only covers what the database contains; no cloud detection |
+| EICAR/synthetic IOC test file | Included hash and content rule | `data/signatures.json` | It is a functional test, not real malware coverage |
+| Container obfuscation | Unpacking with entry, size, ratio and depth limits | `engine/containers.py`, `ScanConfig` | Does not analyze nested formats beyond `container_max_depth` |
+| ReDoS in content rules | `regex` with a per-rule `timeout` and `RULE-TIMEOUT` reporting | `engine/signatures.py` | Without the `hardening` extra, `re` is used with no timeout |
+| Loops and link-based evasion | `follow_symlinks=False` and rejection of reparse points in the native monitor | `config.py`, `realtime.py` | The decision depends on the available Windows APIs |
+| Self-detection of the product | `AllowList.for_self([home, package root])` | `core/allowlist.py`, CLI | A badly edited allowlist can exempt malicious paths |
+| Quarantine index modification | HMAC-SHA256 with a key outside the directory and `verify_all()` | `core/quarantine.py` | The key is stored in plaintext; an attacker with home access can read it and recompute the MAC |
+| Restore of an altered file | `verify_entry()` compares the stored size and SHA-256 | `core/quarantine.py` | Does not encrypt content; `delete()`/`prune()` still work even if alteration is detected |
+| Signature rollback | `check_rollback()` and increasing revision on updates | `engine/signatures.py`, `updates.py` | `SignatureDatabase.load()` by itself **does not** require a signature or revision |
+| Unsigned or corrupt update | Mandatory Ed25519 signature with public key, optional hash and atomic replacement with `.bak` | `updates.py` | The public key is distributed manually; no rotation, build pinning or Transparency Log |
+| Parse errors in a hostile file | Per-file error capture and size limits | `engine/scanner.py`, `ScanConfig` | An error is recorded as `errors`, it does not kill the scan |
+| Loss of visibility | JSONL events for scans, findings, quarantine and commands | `core/logging.py` | No signature, encryption, rotation or immutable retention |
+| Insecure configuration detected late | `audit.py` validates the database, signature, quarantine, logs, exclusions, backend and limits | `sentinel/audit.py` | It is a point-in-time check, not a runtime control |
 
-## Amenazas pendientes o no mitigadas
+## Pending or unmitigated threats
 
-- **Filtro de kernel**: no existe. `RealtimeMonitor` usa
-  `ReadDirectoryChangesW`, `watchdog` o sondeo desde espacio de usuario. Un
-  atacante con el mismo privilegio puede terminar el proceso, saturar la cola o
-  actuar antes de que venza el *grace period*. No hay prevención de ejecución.
-  La propuesta de minifiltro está en `docs/KERNEL_FILTER_DESIGN.md`.
-- **Authenticode**: no se comprueba la firma de los PE. Un binario firmado por
-  una entidad legítima o robada se analiza como cualquier otro archivo; no hay
-  listas de editores de confianza ni reputación.
-- **Desofuscación de macros**: `engine/ole.py` extrae flujos OLE y
-  `engine/vba.py` descomprime el proyecto MS-OVBA para aplicar reglas `VBA-*`,
-  pero no interpreta macros, no desofusca estrategias arbitrarias y no hay
-  sandbox. Un documento con código ofuscado puede evadir las reglas.
-- **Supply chain de firmas**: la clave privada se genera en disco
-  (`crypto.generate_keypair`) sin cifrado ni HSM. La clave pública se entrega
-  manualmente con `--public-key`; no hay pinning, cadena de certificados,
-  rotación ni firma de la propia herramienta. La base incluida sí lleva
-  `signatures.json.sig` y `signatures.json.pub`, pero `SignatureDatabase.load()`
-  no los exige: una instalación que copie solo `signatures.json` carga sin
-  verificar localmente. `SENTINEL_PUBLIC_KEY` / `signing.pub` es la convención
-  que usa `audit.py` para comprobar esa firma.
-- **Falsos positivos**: las reglas `SENTINEL_TEST_MARKER` y la heurística de
-  entropía son sintéticas. La auto-exclusión cubre directorios completos, así
-  que una exclusión mal puesta crea un punto ciego. No hay *sandbox*,
-  reputación ni confirmación por proveedor.
-- **Permisos en Windows**: `os.stat` no expone ACLs y suele mostrar modo `0666`
-  incluso con una ACL restrictiva. `quarantine.key_permissions` declara
-  explícitamente la limitación y **nunca cambia permisos**: la ACL debe
-  revisarse con `icacls`.
-- **Persistencia del atacante**: `audit.jsonl`, `history.db` y los informes no
-  están firmados; un usuario con acceso a la home puede borrarlos o editarlos.
-- **Cuarentena**: los archivos se renombran a UUID, no se cifran. Cualquier
-  proceso del usuario puede leerlos directamente desde `quarantine/files`.
+- **Kernel filter**: does not exist. `RealtimeMonitor` uses
+  `ReadDirectoryChangesW`, `watchdog` or polling from user space. An attacker
+  with the same privilege can terminate the process, saturate the queue or act
+  before the *grace period* expires. There is no execution prevention. The
+  minifilter proposal is in `docs/KERNEL_FILTER_DESIGN.md`.
+- **Authenticode**: PE signatures are not checked. A binary signed by a
+  legitimate or stolen entity is analyzed like any other file; there are no
+  trusted publisher lists or reputation.
+- **Macro deobfuscation**: `engine/ole.py` extracts OLE streams and
+  `engine/vba.py` decompresses the MS-OVBA project to apply `VBA-*` rules, but
+  it does not interpret macros, deobfuscate arbitrary strategies and there is
+  no sandbox. A document with obfuscated code may evade the rules.
+- **Signature supply chain**: the private key is generated on disk
+  (`crypto.generate_keypair`) with no encryption or HSM. The public key is
+  delivered manually with `--public-key`; there is no pinning, certificate
+  chain, rotation or signing of the tool itself. The included database does
+  carry `signatures.json.sig` and `signatures.json.pub`, but
+  `SignatureDatabase.load()` does not require them: an installation that copies
+  only `signatures.json` loads without local verification. `SENTINEL_PUBLIC_KEY`
+  / `signing.pub` is the convention `audit.py` uses to check that signature.
+- **False positives**: the `SENTINEL_TEST_MARKER` rules and entropy heuristics
+  are synthetic. Self-exclusion covers entire directories, so a badly placed
+  exclusion creates a blind spot. There is no *sandbox*, reputation or vendor
+  confirmation.
+- **Windows permissions**: `os.stat` does not expose ACLs and usually shows
+  mode `0666` even with a restrictive ACL. `quarantine.key_permissions`
+  explicitly declares this limitation and **never changes permissions**: the
+  ACL must be reviewed with `icacls`.
+- **Attacker persistence**: `audit.jsonl`, `history.db` and reports are not
+  signed; a user with home access can delete or edit them.
+- **Quarantine**: files are renamed to UUIDs, not encrypted. Any user process
+  can read them directly from `quarantine/files`.
 
-## Uso de la autoevaluación
+## Using the self-assessment
 
-El flujo mínimo es:
+The minimal workflow is:
 
 ```powershell
-# 1. Generar claves (la privada debe quedar fuera del equipo escaneado).
-sentinel keys generate --private C:\seguro\private.pem --public C:\seguro\public.pem
+# 1. Generate keys (the private key must be kept off the scanned machine).
+sentinel keys generate --private C:\secure\private.pem --public C:\secure\public.pem
 
-# 2. Firmar la base instalada (la ruta global --signatures va antes del subcomando).
+# 2. Sign the installed database (the global --signatures option goes before the subcommand).
 sentinel --signatures C:\ProgramData\Sentinel\signatures.json signatures sign `
-  --key C:\seguro\private.pem `
+  --key C:\secure\private.pem `
   --output C:\ProgramData\Sentinel\signatures.json.sig
 
-# 3. Configurar el ancla de confianza para la auditoría.
+# 3. Configure the trust anchor for the audit.
 $env:SENTINEL_PUBLIC_KEY = 'C:\ProgramData\Sentinel\signing.pub'
 
-# 4. Ejecutar la autoevaluación: salida 0 si todo pasa, 2 si hay fallos.
+# 4. Run the self-assessment: exit 0 if all pass, 2 on failures.
 sentinel audit
 ```
 
-`run_security_audit(home, signatures)` devuelve `SecurityAudit` con diez checks:
+`run_security_audit(home, signatures)` returns `SecurityAudit` with ten checks:
 
-| Check | Qué comprueba |
+| Check | What it checks |
 | --- | --- |
-| `signatures.valid` | Carga/validación de la base y revisión entera > 0 |
-| `signatures.signed` | Firma `.sig` Ed25519 con la clave pública configurada |
-| `quarantine.integrity` | MAC e hashes de todas las entradas; "sin entradas" si no hay índice |
-| `quarantine.key_permissions` | Bits de lectura de `quarantine.key`; limitación de ACL documentada en Windows |
-| `logging.enabled` | Escritura y posterior lectura de un evento `audit.check` en JSONL válido |
-| `allowlist.self` | Auto-exclusión no vacía y aplicable a la home |
-| `realtime.backend` | Backend no-polling en Windows; `polling` en otros SO |
-| `config.sane` | Límites anti-bomba > 0 y `container_max_depth >= 1` |
-| `home.location` | Home fuera de `Windows` / `Program Files`; `ProgramData` permitido |
-| `iocs.minimum` | Al menos un hash y una regla de contenido |
+| `signatures.valid` | Database load/validation and integer revision > 0 |
+| `signatures.signed` | Ed25519 `.sig` signature with the configured public key |
+| `quarantine.integrity` | MAC and hashes of all entries; "no entries" if there is no index |
+| `quarantine.key_permissions` | Read bits of `quarantine.key`; documented ACL limitation on Windows |
+| `logging.enabled` | Writing and then reading an `audit.check` event in valid JSONL |
+| `allowlist.self` | Non-empty self-exclusion applicable to the home |
+| `realtime.backend` | Non-polling backend on Windows; `polling` on other OSes |
+| `config.sane` | Anti-bomb limits > 0 and `container_max_depth >= 1` |
+| `home.location` | Home outside `Windows` / `Program Files`; `ProgramData` allowed |
+| `iocs.minimum` | At least one hash and one content rule |
 
-Las excepciones se convierten en fallos con el mensaje en `detail`; la
-puntuación es el porcentaje de checks superados. **Un 100/100 no implica que
-el equipo esté libre de malware**: solo dice que estos controles están
-presentes y son coherentes. El alcance de una revisión independiente está en
-`docs/EXTERNAL_AUDIT_SCOPE.md`.
+Exceptions are converted to failures with the message in `detail`; the score is
+the percentage of checks passed. **A 100/100 does not imply that the machine is
+malware-free**: it only says that these controls are present and consistent.
+The scope of an independent review is in `docs/EXTERNAL_AUDIT_SCOPE.md`.
 
-## Análisis estático del código
+## Static code analysis
 
-Además de la autoevaluación en tiempo de ejecución se ejecutaron:
+In addition to the runtime self-assessment, the following were run:
 
-* `python -m ruff check .`: sin avisos.
-* `python -m bandit -r sentinel -x tests`: **0 avisos** sobre 6026 líneas
-  (`docs/bandit-results.json`). Bandit señaló tres puntos que se corrigieron en
-  lugar de silenciarse: la consulta SQL con marcadores dinámicos en
-  `database.mark_quarantined()` se sustituyó por SQL estático con parámetros
-  enlazados; un `assert` en el backend nativo se cambió por una comprobación
-  explícita; y `updates._download()` valida ahora el esquema `http`/`https`
-  antes de llamar a `urlopen`; la alerta residual de Bandit sobre esa llamada
-  se documentó con `# nosec B310` porque el esquema ya está restringido. Las
-  pruebas de actualización simulan HTTPS con `urlopen` falsificado en lugar de
-  usar `file://`.
-* `git ls-files`: ni la clave privada (`packaging/keys/private.pem`), ni
-  `packaging/tools/`, ni `dist/`, `build/` o la home de pruebas están
-  versionados.
-* Análisis de dependencias (SCA) con `pip-audit` sobre los extras declarados
-  en `pyproject.toml` (24 paquetes resueltos): **0 vulnerabilidades**
-  (`docs/pip-audit-results.json`). El entorno principal quedó con 44 paquetes
-  y 0 vulnerabilidades tras retirar la herramienta de auditoría.
-  `setuptools` se actualizó a 84.2.1. La herramienta SCA se ejecutó en un venv
-  aislado con Python 3.14: en Python 3.10 su dependencia transitiva `filelock`
-  no tiene versión corregida (el arreglo exige ≥3.11), por lo que no se añadió
-  `pip-audit` a los extras `dev`.
+* `python -m ruff check .`: no warnings.
+* `python -m bandit -r sentinel -x tests`: **0 warnings** over 6026 lines
+  (`docs/bandit-results.json`). Bandit flagged three points that were fixed
+  rather than silenced: the SQL query with dynamic placeholders in
+  `database.mark_quarantined()` was replaced with static SQL using bound
+  parameters; an `assert` in the native backend was changed to an explicit
+  check; and `updates._download()` now validates the `http`/`https` scheme before
+  calling `urlopen`; the residual Bandit warning on that call was documented
+  with `# nosec B310` because the scheme is already restricted. The update tests
+  simulate HTTPS with a mocked `urlopen` instead of using `file://`.
+* `git ls-files`: neither the private key (`packaging/keys/private.pem`), nor
+  `packaging/tools/`, `dist/`, `build/` or the test home are versioned.
+* Dependency analysis (SCA) with `pip-audit` over the extras declared in
+  `pyproject.toml` (24 resolved packages): **0 vulnerabilities**
+  (`docs/pip-audit-results.json`). The main environment ended up with 44
+  packages and 0 vulnerabilities after removing the audit tool. `setuptools`
+  was updated to 84.2.1. The SCA tool was run in an isolated venv with Python
+  3.14: on Python 3.10 its transitive dependency `filelock` has no fixed version
+  (the fix requires ≥3.11), so `pip-audit` was not added to the `dev` extras.
 
-Esto no sustituye a una revisión externa: `bandit` detecta patrones inseguros y
-`pip-audit` compara versiones con bases de vulnerabilidades; ninguno encuentra
-fallos lógicos ni garantiza la seguridad del producto.
+This does not replace an external review: `bandit` detects insecure patterns
+and `pip-audit` compares versions against vulnerability databases; neither
+finds logical flaws nor guarantees product security.
 
-## Checklist de despliegue
+## Deployment checklist
 
-- [ ] Instalar la home en `%ProgramData%\Sentinel` (o carpeta del usuario con
-      ACL restrictiva), nunca bajo `C:\Windows` o `C:\Program Files`.
-- [ ] Aplicar la ACL manualmente con `icacls` a la home, `quarantine.key` y
-      `quarantine/`; verificar quién puede leer y escribir.
-- [ ] Guardar la clave privada fuera del equipo (o en un almacén protegido) y
-      distribuir la pública por un canal verificado.
-- [ ] Firmar `signatures.json` y comprobar que existe `<base>.sig` con 64 bytes.
-- [ ] Configurar `SENTINEL_PUBLIC_KEY` (o `signing.pub`) antes de auditar.
-- [ ] Actualizar solo mediante `sentinel signatures update --public-key ...`
-      con HTTPS y, si es posible, `--sha256`; revisar revisiones y `.bak`.
-- [ ] Ejecutar `sentinel audit` y exigir salida 0, puntuación 100 y cero
-      `failures`; investigar cada `remediation` antes de aceptar excepciones.
-- [ ] Verificar `sentinel quarantine verify` y la integridad de `audit.jsonl`.
-- [ ] Revisar `allowlist.json` y documentar cada exclusión con responsable y
-      fecha de caducidad.
-- [ ] Confirmar que en Windows está disponible un backend no-polling y que el
-      servicio se ejecuta con la cuenta mínima necesaria.
-- [ ] Probar EICAR en un entorno aislado, incluida la restauración desde
-      cuarentena, y comprobar que no se generan falsos positivos inaceptables.
-- [ ] Seguir `docs/EV_OV_HANDOFF.md` para obtener el certificado EV/OV, firmar
-      el release y coordinar la regla de AppLocker/WDAC; adjuntar la evidencia.
-- [ ] Contratar la auditoría externa con `docs/EXTERNAL_AUDIT_SCOPE.md` y cerrar
-      los hallazgos con prueba de regresión antes de aceptar el informe.
-- [ ] Registrar como pendientes el filtro de kernel, la desofuscación
-      arbitraria de macros y la rotación de claves de firmas.
+- [ ] Install the home in `%ProgramData%\Sentinel` (or a user folder with a
+      restrictive ACL), never under `C:\Windows` or `C:\Program Files`.
+- [ ] Apply the ACL manually with `icacls` to the home, `quarantine.key` and
+      `quarantine/`; verify who can read and write.
+- [ ] Store the private key off the machine (or in a protected store) and
+      distribute the public key through a verified channel.
+- [ ] Sign `signatures.json` and check that `<base>.sig` exists with 64 bytes.
+- [ ] Configure `SENTINEL_PUBLIC_KEY` (or `signing.pub`) before auditing.
+- [ ] Update only via `sentinel signatures update --public-key ...` over HTTPS
+      and, if possible, with `--sha256`; review revisions and `.bak`.
+- [ ] Run `sentinel audit` and require exit 0, a score of 100 and zero
+      `failures`; investigate each `remediation` before accepting exceptions.
+- [ ] Verify `sentinel quarantine verify` and the integrity of `audit.jsonl`.
+- [ ] Review `allowlist.json` and document each exclusion with an owner and an
+      expiration date.
+- [ ] Confirm that a non-polling backend is available on Windows and that the
+      service runs with the minimum necessary account.
+- [ ] Test EICAR in an isolated environment, including restore from quarantine,
+      and check that no unacceptable false positives are generated.
+- [ ] Follow `docs/EV_OV_HANDOFF.md` to obtain the EV/OV certificate, sign the
+      release and coordinate the AppLocker/WDAC rule; attach the evidence.
+- [ ] Commission the external audit using `docs/EXTERNAL_AUDIT_SCOPE.md` and
+      close findings with a regression test before accepting the report.
+- [ ] Record the kernel filter, arbitrary macro deobfuscation and signature key
+      rotation as outstanding items.

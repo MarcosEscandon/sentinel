@@ -1,9 +1,9 @@
-"""Descompresión segura de contenedores para análisis anidado.
+"""Safe container decompression for nested analysis.
 
-Se admiten ZIP (incluidos formatos Office OOXML), TAR (con gzip/bz2/xz),
-streams simples gzip/bz2/xz y compuestos OLE2/CFB (MSI, DOC, XLS, PPT, MSG).
-Todos los límites son configurables en :class:`~sentinel.config.ScanConfig`
-para evitar bombas de descompresión y archivos excesivamente grandes.
+ZIP (including OOXML formats), TAR (with gzip/bz2/xz), simple gzip/bz2/xz
+streams, and OLE2/CFB compound files (MSI, DOC, XLS, PPT, MSG) are supported.
+All limits are configurable in :class:`~sentinel.config.ScanConfig` to prevent
+decompression bombs and excessively large files.
 """
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ _TAR_EXTENSIONS = frozenset({".tar", ".tgz", ".tbz2", ".txz"})
 ZIP_EXTENSIONS = frozenset(
     {
         ".zip",
-        # Documentos Office abiertos y formatos OOXML.
+        # Office Open XML and OpenDocument formats.
         ".docx",
         ".xlsx",
         ".pptx",
         ".odt",
         ".ods",
         ".odp",
-        # Paquetes, extensiones y aplicaciones basadas en ZIP.
+        # Packages, extensions, and ZIP-based applications.
         ".jar",
         ".apk",
         ".epub",
@@ -45,10 +45,10 @@ ZIP_EXTENSIONS = frozenset(
         ".ipa",
     }
 )
-"""Formatos que deben abrirse con el lector ZIP."""
+"""Formats that must be opened with the ZIP reader."""
 
 ARCHIVE_EXTENSIONS = ZIP_EXTENSIONS | SIMPLE_COMPRESSION | _TAR_EXTENSIONS | OLE_EXTENSIONS
-"""Todos los contenedores reconocidos por :func:`unpack`."""
+"""All containers recognized by :func:`unpack`."""
 
 MACRO_PATHS = frozenset(
     {
@@ -66,18 +66,18 @@ MACRO_PATHS = frozenset(
         "VBA/Project",
     }
 )
-"""Rutas relativas típicas de proyectos VBA/macros dentro de contenedores."""
+"""Typical relative paths of VBA/macro projects inside containers."""
 
 _MACRO_PATHS_LOWER = frozenset(path.lower() for path in MACRO_PATHS)
 
 
 class ContainerError(Exception):
-    """Un contenedor superó los límites o no se pudo abrir."""
+    """A container exceeded the limits or could not be opened."""
 
 
 @dataclass(frozen=True)
 class ContainerEntry:
-    """Un archivo extraído de un contenedor."""
+    """A file extracted from a container."""
 
     path: str
     data: bytes
@@ -86,7 +86,7 @@ class ContainerEntry:
 
 
 def _safe_name(name: str) -> str:
-    """Rechaza rutas absolutas y traversal dentro del contenedor."""
+    """Rejects absolute paths and traversal inside the container."""
     candidate = name.replace("\\", "/")
     parts = [part for part in candidate.split("/") if part not in {"", "."}]
     if (
@@ -95,7 +95,7 @@ def _safe_name(name: str) -> str:
         or any(len(part) > 1 and part[1] == ":" for part in parts[:1])
         or not parts
     ):
-        raise ContainerError(f"Nombre de archivo inseguro en contenedor: {name!r}")
+        raise ContainerError(f"Unsafe file name in container: {name!r}")
     return "/".join(parts)
 
 
@@ -105,13 +105,13 @@ def _entry_limit(config: ScanConfig) -> int:
 
 def _check_size(config: ScanConfig, raw_size: int, compressed_size: int, total: int) -> None:
     if raw_size > config.container_max_uncompressed:
-        raise ContainerError("un archivo del contenedor supera el tamaño descomprimido permitido")
+        raise ContainerError("a file in the container exceeds the allowed uncompressed size")
     if total + raw_size > config.container_max_uncompressed:
-        raise ContainerError("el contenedor supera el total descomprimido permitido")
+        raise ContainerError("container exceeds the allowed total uncompressed size")
     if raw_size and compressed_size:
         ratio = raw_size / compressed_size
         if ratio > config.container_max_ratio:
-            raise ContainerError(f"ratio de compresión sospechoso: {ratio:.1f}")
+            raise ContainerError(f"suspicious compression ratio: {ratio:.1f}")
 
 
 def unpack(
@@ -120,7 +120,7 @@ def unpack(
     config: ScanConfig,
     depth: int = 0,
 ) -> list[ContainerEntry]:
-    """Extrae entradas de un contenedor; puede llamarse recursivamente."""
+    """Extracts entries from a container; may be called recursively."""
     if depth >= config.container_max_depth:
         return []
     suffix = Path(name).suffix.lower()
@@ -137,7 +137,7 @@ def unpack(
     else:
         entries = _unpack_tar(data, name, config, depth)
     if len(entries) > config.container_max_entries:
-        raise ContainerError("demasiadas entradas en el contenedor")
+        raise ContainerError("too many entries in container")
     return entries
 
 
@@ -171,11 +171,11 @@ def _unpack_zip(
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         infos = archive.infolist()
         if len(infos) > config.container_max_entries:
-            raise ContainerError("demasiadas entradas en el ZIP")
+            raise ContainerError("too many entries in ZIP")
         total = 0
         for info in infos:
             if info.is_dir() or info.flag_bits & 0x1:
-                continue  # directorios y entradas cifradas
+                continue  # directories and encrypted entries
             inner = _safe_name(info.filename)
             _check_size(config, info.file_size, len(data), total)
             with archive.open(info) as stream:
@@ -200,7 +200,7 @@ def _unpack_tar(
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:
         members = archive.getmembers()
         if len(members) > config.container_max_entries:
-            raise ContainerError("demasiadas entradas en el TAR")
+            raise ContainerError("too many entries in TAR")
         total = 0
         for member in members:
             if not member.isfile():
@@ -232,9 +232,9 @@ def _unpack_simple(
     decompress = {".gz": gzip.decompress, ".bz2": bz2.decompress, ".xz": lzma.decompress}[suffix]
     raw = decompress(data[: config.container_max_uncompressed + 1])
     if len(raw) > config.container_max_uncompressed:
-        raise ContainerError("el stream descomprimido supera el límite")
+        raise ContainerError("decompressed stream exceeds limit")
     _check_size(config, len(raw), len(data), 0)
-    inner = name[: -len(suffix)] or "contenido"
+    inner = name[: -len(suffix)] or "content"
     truncated = len(raw) > _entry_limit(config)
     content = raw[: _entry_limit(config)]
     output: list[ContainerEntry] = []
@@ -244,11 +244,11 @@ def _unpack_simple(
 
 
 def find_macro_entries(entries: Iterable[ContainerEntry]) -> list[ContainerEntry]:
-    """Devuelve las entradas que parecen proyectos VBA/macros.
+    """Returns entries that look like VBA/macro projects.
 
-    La comparación es insensible a mayúsculas y acepta tanto ``/`` como ``\\``.
-    Se ignora el prefijo virtual del contenedor (``archivo.zip!/``) para que
-    funcione igual con entradas ZIP, TAR u OLE, incluidas las anidadas.
+    The comparison is case-insensitive and accepts both ``/`` and ``\\``.
+    The virtual container prefix (``file.zip!/``) is ignored so that the same
+    logic works for ZIP, TAR, and OLE entries, including nested ones.
     """
     found: list[ContainerEntry] = []
     for entry in entries:

@@ -1,12 +1,12 @@
-"""Sentinel: motor de detección y escaneo de malware modular.
+"""Sentinel: a modular malware detection and scanning engine.
 
-El proyecto se organiza en tres capas:
+The project is organized into three layers:
 
-* ``sentinel.engine``: detección (firmas, heurística, YARA opcional).
-* ``sentinel.core``: cuarentena, historial y modelos de datos.
-* ``sentinel.cli``: interfaz de línea de comandos.
+* ``sentinel.engine``: detection (signatures, heuristics, optional YARA).
+* ``sentinel.core``: quarantine, history, and data models.
+* ``sentinel.cli``: command-line interface.
 
-Todo el código es de uso defensivo: no incluye cargas útiles dañinas.
+All code is intended for defensive use: it contains no harmful payloads.
 """
 
 __version__ = "0.1.0"

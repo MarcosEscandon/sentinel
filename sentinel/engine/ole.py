@@ -1,9 +1,9 @@
-"""Parser mínimo de Compound File Binary (OLE2/CFB) sin dependencias.
+"""Minimal dependency-free Compound File Binary (OLE2/CFB) parser.
 
-Extrae los streams de documentos Office antiguos (``.doc``, ``.xls``,
-``.ppt``, ``.msg``) y de paquetes MSI para que el escáner aplique sus firmas
-sobre el contenido. Solo implementa lo necesario: FAT, MiniFAT, directorio y
-mini-stream, siempre respetando los límites de :class:`~sentinel.config.ScanConfig`.
+Extracts streams from legacy Office documents (``.doc``, ``.xls``, ``.ppt``,
+``.msg``) and MSI packages so the scanner can apply its signatures to the
+content. It implements only what is needed: FAT, MiniFAT, directory, and
+mini-stream, always respecting the limits of :class:`~sentinel.config.ScanConfig`.
 """
 
 from __future__ import annotations
@@ -15,25 +15,25 @@ from typing import TYPE_CHECKING
 
 from ..config import ScanConfig
 
-if TYPE_CHECKING:  # pragma: no cover - solo para comprobadores de tipos
+if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     from .containers import ContainerEntry
 
 OLE_EXTENSIONS = frozenset({".msi", ".doc", ".xls", ".ppt", ".msg"})
-"""Formatos Compound File Binary (OLE2) que debe abrir el lector CFB."""
+"""Compound File Binary (OLE2) formats that the CFB reader must open."""
 
 _OLE_SIGNATURE = bytes.fromhex("d0cf11e0a1b11ae1")
-_MAXREGSECT = 0xFFFFFFFA  # Por encima de este valor hay sectores/punteros especiales.
+_MAXREGSECT = 0xFFFFFFFA  # Above this value, sectors/pointers are special.
 _DEFAULT_MINI_CUTOFF = 4096
 _DIR_ENTRY_SIZE = 128
 
 
 class _ContainerFormatError(Exception):
-    """Error interno de Parseo de un archivo CFB (se traduce a ContainerError)."""
+    """Internal CFB parsing error (translated to ContainerError)."""
 
 
 @dataclass(frozen=True)
 class _DirectoryEntry:
-    """Entrada de 128 bytes del directorio CFB."""
+    """128-byte entry in the CFB directory."""
 
     name: str
     obj_type: int  # 1 = storage, 2 = stream, 5 = root
@@ -45,12 +45,12 @@ class _DirectoryEntry:
 
 
 def _invalid(message: str) -> _ContainerFormatError:
-    """Construye un error de formato con un mensaje claro en español."""
-    return _ContainerFormatError(f"archivo OLE2 inválido: {message}")
+    """Builds a format error with a clear message."""
+    return _ContainerFormatError(f"invalid OLE2 file: {message}")
 
 
 class _CompoundFile:
-    """Lectura de bajo nivel de la estructura CFB."""
+    """Low-level reader for the CFB structure."""
 
     def __init__(self, data: bytes) -> None:
         self.data = data
@@ -62,14 +62,14 @@ class _CompoundFile:
         self.mini_stream = self._read_mini_stream()
 
     def _read_header(self) -> None:
-        """Valida la cabecera de 512 bytes y extrae los parámetros globales."""
+        """Validates the 512-byte header and extracts the global parameters."""
         data = self.data
         if len(data) < 512 or data[:8] != _OLE_SIGNATURE:
-            raise _invalid("falta la cabecera CFB (D0 CF 11 E0 A1 B1 1A E1)")
+            raise _invalid("missing CFB header (D0 CF 11 E0 A1 B1 1A E1)")
 
         sector_shift = struct.unpack_from("<H", data, 30)[0]
         if sector_shift not in (9, 12):
-            raise _invalid(f"tamaño de sector no soportado (2^{sector_shift})")
+            raise _invalid(f"unsupported sector size (2^{sector_shift})")
         self.sector_size = 1 << sector_shift
 
         mini_shift = struct.unpack_from("<H", data, 32)[0]
@@ -83,17 +83,17 @@ class _CompoundFile:
         self.num_difat = struct.unpack_from("<I", data, 72)[0]
         self.difat = list(struct.unpack_from("<109I", data, 76))
         if self.first_dir >= _MAXREGSECT:
-            raise _invalid("sin sector de directorio")
+            raise _invalid("no directory sector")
 
     def _sector(self, sid: int) -> bytes:
-        """Devuelve el contenido de un sector regular por su identificador."""
+        """Returns the contents of a regular sector by its identifier."""
         offset = (sid + 1) * self.sector_size
         if sid >= _MAXREGSECT or offset + self.sector_size > len(self.data):
-            raise _invalid(f"sector fuera de rango: {sid}")
+            raise _invalid(f"sector out of range: {sid}")
         return self.data[offset : offset + self.sector_size]
 
     def _fat_sector_ids(self) -> list[int]:
-        """Recoge los sectores FAT de la DIFAT principal y de la extendida."""
+        """Collects FAT sectors from the main DIFAT and the extended DIFAT."""
         ids = [sid for sid in self.difat if sid < _MAXREGSECT]
         sid = self.first_difat
         seen: set[int] = set()
@@ -104,11 +104,11 @@ class _CompoundFile:
             values = struct.unpack(f"<{self.sector_size // 4}I", self._sector(sid))
             ids.extend(value for value in values[:-1] if value < _MAXREGSECT)
             sid = values[-1]
-        # Un mismo sector FAT no debe contarse dos veces.
+        # A FAT sector must not be counted twice.
         return list(dict.fromkeys(ids))
 
     def _chain(self, start: int, table: list[int]) -> list[int]:
-        """Recorre una cadena de sectores detectando bucles y tablas cortas."""
+        """Follows a sector chain, detecting loops and short tables."""
         if start >= _MAXREGSECT:
             return []
         chain: list[int] = []
@@ -117,25 +117,25 @@ class _CompoundFile:
         limit = len(self.data) // self.sector_size + 1
         while sid < _MAXREGSECT and sid not in seen:
             if len(chain) > limit:
-                raise _invalid("cadena de sectores demasiado larga")
+                raise _invalid("sector chain too long")
             if sid >= len(table):
-                raise _invalid("tabla FAT/MiniFAT incompleta")
+                raise _invalid("incomplete FAT/MiniFAT table")
             seen.add(sid)
             chain.append(sid)
             sid = table[sid]
         return chain
 
     def _read_fat(self) -> list[int]:
-        """Construye la tabla FAT a partir de sus sectores."""
+        """Builds the FAT table from its sectors."""
         fat: list[int] = []
         for sid in self._fat_sector_ids():
             fat.extend(struct.unpack(f"<{self.sector_size // 4}I", self._sector(sid)))
         if not fat:
-            raise _invalid("tabla FAT vacía")
+            raise _invalid("empty FAT table")
         return fat
 
     def _read_minifat(self) -> list[int]:
-        """Construye la MiniFAT, necesaria para los streams pequeños."""
+        """Builds the MiniFAT, needed for small streams."""
         if self.first_minifat >= _MAXREGSECT or not self.num_minifat:
             return []
         minifat: list[int] = []
@@ -145,7 +145,7 @@ class _CompoundFile:
         return minifat
 
     def _read_directory(self) -> list[_DirectoryEntry]:
-        """Parsea el árbol de entradas del directorio."""
+        """Parses the directory entry tree."""
         raw = b"".join(self._sector(sid) for sid in self._chain(self.first_dir, self.fat))
         entries: list[_DirectoryEntry] = []
         for offset in range(0, len(raw) - _DIR_ENTRY_SIZE + 1, _DIR_ENTRY_SIZE):
@@ -163,14 +163,14 @@ class _CompoundFile:
             if start >= _MAXREGSECT:
                 start = 0
             if self.sector_size == 512:
-                size &= 0xFFFFFFFF  # La versión 3 solo usa los 32 bits bajos.
+                size &= 0xFFFFFFFF  # Version 3 uses only the lower 32 bits.
             entries.append(_DirectoryEntry(name, obj_type, left, right, child, start, size))
         if not entries or entries[0].obj_type != 5:
-            raise _invalid("directorio sin entrada raíz")
+            raise _invalid("directory without a root entry")
         return entries
 
     def _collect_streams(self) -> list[tuple[str, _DirectoryEntry]]:
-        """Devuelve ``(ruta, entrada)`` para cada stream del directorio."""
+        """Returns ``(path, entry)`` for each stream in the directory."""
         streams: list[tuple[str, _DirectoryEntry]] = []
         visited: set[int] = set()
 
@@ -191,7 +191,7 @@ class _CompoundFile:
         return streams
 
     def _read_regular(self, start: int, size: int) -> bytes:
-        """Lee hasta ``size`` bytes siguiendo la cadena FAT."""
+        """Reads up to ``size`` bytes by following the FAT chain."""
         if start >= _MAXREGSECT or size <= 0:
             return b""
         output = bytearray()
@@ -202,14 +202,14 @@ class _CompoundFile:
         return bytes(output[:size])
 
     def _read_mini_stream(self) -> bytes:
-        """Reconstruye el mini-stream a partir del tamaño de la entrada raíz."""
+        """Reconstructs the mini-stream from the root entry's size."""
         root = self.entries[0]
         if root.start >= _MAXREGSECT or not root.size:
             return b""
         return self._read_regular(root.start, min(root.size, len(self.data)))
 
     def _read_mini(self, start: int, size: int) -> bytes:
-        """Lee hasta ``size`` bytes del mini-stream usando la MiniFAT."""
+        """Reads up to ``size`` bytes from the mini-stream using the MiniFAT."""
         if start >= _MAXREGSECT or size <= 0 or not self.minifat:
             return b""
         output = bytearray()
@@ -217,7 +217,7 @@ class _CompoundFile:
         sid = start
         while sid < _MAXREGSECT and sid not in seen:
             if sid >= len(self.minifat):
-                raise _invalid("MiniFAT incompleta")
+                raise _invalid("incomplete MiniFAT")
             seen.add(sid)
             offset = sid * self.mini_size
             output.extend(self.mini_stream[offset : offset + self.mini_size])
@@ -227,7 +227,7 @@ class _CompoundFile:
         return bytes(output[:size])
 
     def read_stream(self, entry: _DirectoryEntry, max_bytes: int) -> bytes:
-        """Lee un stream completo o, como máximo, ``max_bytes``."""
+        """Reads a complete stream or at most ``max_bytes``."""
         wanted = min(entry.size, max_bytes)
         if wanted <= 0:
             return b""
@@ -242,12 +242,12 @@ def unpack_ole(
     config: ScanConfig,
     depth: int = 0,
 ) -> list[ContainerEntry]:
-    """Extrae los streams OLE2 como entradas virtuales ``archivo.msi!/Stream``.
+    """Extracts OLE2 streams as virtual entries ``file.msi!/Stream``.
 
-    Los streams se tratan igual que los de un ZIP: se valida el nombre, se
-    aplican los límites de tamaño/ratio y se permite el análisis anidado.
+    Streams are treated like ZIP entries: the name is validated, size/ratio
+    limits are applied, and nested analysis is allowed.
     """
-    # Importación local para evitar un ciclo con containers.py.
+    # Local import to avoid a cycle with containers.py.
     from .containers import (
         ARCHIVE_EXTENSIONS,
         ContainerEntry,
@@ -267,10 +267,10 @@ def unpack_ole(
     except _ContainerFormatError as exc:
         raise ContainerError(str(exc)) from exc
     except (struct.error, ValueError, OverflowError) as exc:
-        raise ContainerError(f"archivo OLE2 inválido: {exc}") from exc
+        raise ContainerError(f"invalid OLE2 file: {exc}") from exc
 
     if len(container.streams) > config.container_max_entries:
-        raise ContainerError("demasiados streams en el contenedor OLE2")
+        raise ContainerError("too many streams in OLE2 container")
 
     limit = _entry_limit(config)
     output: list[ContainerEntry] = []
@@ -290,7 +290,7 @@ def unpack_ole(
             output.extend(unpack(content, inner, config, depth + 1))
 
     if len(output) > config.container_max_entries:
-        raise ContainerError("demasiadas entradas en el contenedor OLE2")
+        raise ContainerError("too many entries in OLE2 container")
     return output
 
 

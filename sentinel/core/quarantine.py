@@ -1,15 +1,15 @@
-"""Gestión de cuarentena con verificación de integridad.
+"""Quarantine management with integrity verification.
 
-Los archivos se renombran a un UUID dentro de ``<dir>/files`` y se registran
-en ``index.json``. Nada se elimina hasta que se pide explícitamente ``delete``.
+Files are renamed to a UUID inside ``<dir>/files`` and recorded in
+``index.json``. Nothing is deleted until ``delete`` is explicitly requested.
 
-Integridad:
+Integrity:
 
-* cada entrada guarda el SHA-256 real del archivo en ``stored_sha256``;
-* el índice lleva un HMAC-SHA256 calculado con una clave situada fuera del
-  directorio de cuarentena (``<home>/quarantine.key``);
-* ``restore()`` rechaza entradas modificadas. ``delete()`` y ``prune()`` siguen
-  funcionando para poder limpiar entradas dañadas.
+* each entry stores the file's actual SHA-256 in ``stored_sha256``;
+* the index carries an HMAC-SHA256 computed with a key located outside the
+  quarantine directory (``<home>/quarantine.key``);
+* ``restore()`` rejects modified entries. ``delete()`` and ``prune()`` still
+  work so that damaged entries can be cleaned up.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ _UUID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 class QuarantineIntegrityError(Exception):
-    """La cuarentena o uno de sus archivos fue modificado sin autorización."""
+    """The quarantine or one of its files was modified without authorization."""
 
 
 def _file_sha256(path: str | Path) -> str:
@@ -75,7 +75,7 @@ class QuarantineEntry:
 
 
 class Quarantine:
-    """Almacén reversible y a prueba de manipulación de archivos detectados."""
+    """Reversible, tamper-evident store for detected files."""
 
     def __init__(self, directory: str | Path) -> None:
         self.directory = Path(directory)
@@ -91,7 +91,7 @@ class Quarantine:
         try:
             data = self.key_path.read_bytes()
             if len(data) < 32:
-                raise QuarantineIntegrityError(f"Clave de cuarentena inválida: {self.key_path}")
+                raise QuarantineIntegrityError(f"Invalid quarantine key: {self.key_path}")
             return data
         except FileNotFoundError:
             pass
@@ -122,10 +122,10 @@ class Quarantine:
         try:
             payload = json.loads(self.index_path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
-                raise TypeError("el índice debe ser un objeto")
+                raise TypeError("the index must be an object")
             entries = payload.get("entries", [])
             if not isinstance(entries, list):
-                raise TypeError("'entries' debe ser una lista")
+                raise TypeError("'entries' must be a list")
         except (OSError, json.JSONDecodeError, TypeError, AttributeError):
             self.index_tampered = True
             return []
@@ -155,10 +155,10 @@ class Quarantine:
         temporary.replace(self.index_path)
 
     def add(self, path: str | Path, reason: str = "", sha256: str = "") -> str:
-        """Mueve un archivo a cuarentena y devuelve su identificador."""
+        """Moves a file to quarantine and returns its identifier."""
         source = Path(path)
         if not source.is_file():
-            raise FileNotFoundError(f"No existe el archivo: {source}")
+            raise FileNotFoundError(f"File does not exist: {source}")
         self._ensure()
         actual_sha256 = _file_sha256(source)
         entry_id = uuid.uuid4().hex
@@ -188,26 +188,26 @@ class Quarantine:
         for entry in self._read_index():
             if entry.id == entry_id:
                 return entry
-        raise KeyError(f"Entrada de cuarentena no encontrada: {entry_id}")
+        raise KeyError(f"Quarantine entry not found: {entry_id}")
 
     def verify_entry(self, entry_id: str) -> bool:
-        """Comprueba el MAC del índice y el hash/size del archivo almacenado."""
+        """Checks the index MAC and the hash/size of the stored file."""
         entry = self.get(entry_id)
         if self.index_tampered:
-            raise QuarantineIntegrityError("El índice de cuarentena fue modificado")
+            raise QuarantineIntegrityError("The quarantine index was modified")
         stored = Path(entry.stored_path)
         if not stored.is_file():
-            raise QuarantineIntegrityError(f"Falta el archivo en cuarentena: {stored}")
+            raise QuarantineIntegrityError(f"Missing quarantined file: {stored}")
         if entry.size and stored.stat().st_size != entry.size:
-            raise QuarantineIntegrityError(f"Tamaño modificado en la entrada {entry_id}")
+            raise QuarantineIntegrityError(f"Modified size in entry {entry_id}")
         actual = _file_sha256(stored)
         expected = entry.stored_sha256 or entry.sha256
         if expected and actual.lower() != expected.lower():
-            raise QuarantineIntegrityError(f"Hash modificado en la entrada {entry_id}")
+            raise QuarantineIntegrityError(f"Modified hash in entry {entry_id}")
         return True
 
     def verify_all(self) -> list[tuple[QuarantineEntry, str]]:
-        """Devuelve ``(entrada, error)`` para cada elemento; error vacío si es válido."""
+        """Returns ``(entry, error)`` for each item; the error is empty if valid."""
         checked: list[tuple[QuarantineEntry, str]] = []
         for entry in self.list():
             try:
@@ -219,14 +219,14 @@ class Quarantine:
         return checked
 
     def restore(self, entry_id: str, overwrite: bool = False) -> Path:
-        """Devuelve el archivo a su ruta original si pasa la verificación."""
+        """Returns the file to its original path if it passes verification."""
         self.verify_entry(entry_id)
         entry = self.get(entry_id)
         stored = Path(entry.stored_path)
         destination = Path(entry.original_path)
         if destination.exists() and not overwrite:
             raise FileExistsError(
-                f"La ruta original ya está ocupada: {destination}. Usa --overwrite."
+                f"Original path is already occupied: {destination}. Use --overwrite."
             )
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists():
@@ -236,7 +236,7 @@ class Quarantine:
         return destination
 
     def delete(self, entry_id: str) -> None:
-        """Elimina definitivamente una entrada y su archivo."""
+        """Permanently deletes an entry and its file."""
         entry = self.get(entry_id)
         stored = Path(entry.stored_path)
         if stored.is_file():
@@ -244,9 +244,9 @@ class Quarantine:
         self._remove_entry(entry_id)
 
     def prune(self, days: int = 30) -> int:
-        """Elimina entradas más antiguas que ``days`` días. Devuelve el número borrado."""
+        """Deletes entries older than ``days`` days. Returns the number removed."""
         if days < 0:
-            raise ValueError("days debe ser >= 0")
+            raise ValueError("days must be >= 0")
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         removed = 0
         for entry in list(self._read_index()):
@@ -265,7 +265,7 @@ class Quarantine:
     @staticmethod
     def _validate_id(entry_id: str) -> None:
         if not _UUID_RE.match(entry_id):
-            raise ValueError(f"Identificador de cuarentena inválido: {entry_id!r}")
+            raise ValueError(f"Invalid quarantine ID: {entry_id!r}")
 
 
 __all__ = ["Quarantine", "QuarantineEntry", "QuarantineIntegrityError"]

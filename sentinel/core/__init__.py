@@ -1,4 +1,4 @@
-"""Núcleo: modelos, cuarentena y persistencia."""
+"""Core: models, quarantine, and persistence."""
 
 from .allowlist import AllowList, normalize_path
 from .database import ScanDatabase

@@ -4,10 +4,10 @@
     "C:\\Tools\\known-good.exe"
   ],
   "directories": [
-    "C:\\Program Files\\MiApp"
+    "C:\\Program Files\\MyApp"
   ],
   "globs": [
-    "C:\\Users\\*\\AppData\\Local\\Temp\\mi-app-*\\**"
+    "C:\\Users\\*\\AppData\\Local\\Temp\\my-app-*\\**"
   ],
   "hashes": []
 }

@@ -1,4 +1,4 @@
-"""Motor de detección."""
+"""Detection engine."""
 
 from .heuristics import HeuristicEngine, analyze_pe, shannon_entropy
 from .scanner import Scanner

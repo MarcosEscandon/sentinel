@@ -1,4 +1,4 @@
-"""Pruebas de las notificaciones nativas (sin abrir ventanas reales)."""
+"""Tests for native notifications (without opening real windows)."""
 
 from __future__ import annotations
 
@@ -19,21 +19,21 @@ def test_available_backends_includes_none_everywhere():
 def test_resolve_backend_validates_and_resolves_auto():
     assert resolve_backend("auto") in set(available_backends()) | {"toast"}
     assert resolve_backend("none") == "none"
-    with pytest.raises(ValueError, match="Backend de notificación desconocido"):
-        resolve_backend("inexistente")
+    with pytest.raises(ValueError, match="Unknown notification backend"):
+        resolve_backend("nonexistent")
 
 
 def test_notifier_none_is_silent():
     notifier = Notifier("none")
     assert notifier.backend == "none"
-    assert notifier.notify("título", "mensaje") is False
-    finding = SimpleNamespace(rule_id="PRUEBA", path="/tmp/archivo", severity=SimpleNamespace(value="high"))
-    assert notifier.notify_finding(finding, "detectado") is False
+    assert notifier.notify("title", "message") is False
+    finding = SimpleNamespace(rule_id="TEST", path="/tmp/file", severity=SimpleNamespace(value="high"))
+    assert notifier.notify_finding(finding, "detected") is False
 
 
 def test_messagebox_is_noop_outside_windows():
     notifier = Notifier("messagebox")
-    assert notifier.notify("título", "mensaje") is (os.name == "nt")
+    assert notifier.notify("title", "message") is (os.name == "nt")
 
 
 def test_all_documented_backends_are_resolvable():

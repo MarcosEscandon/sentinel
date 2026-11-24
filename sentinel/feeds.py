@@ -1,7 +1,7 @@
-"""Conversión de feeds externos de IOCs a ``signatures.json``.
+"""Conversion of external IOC feeds to ``signatures.json``.
 
-Formatos admitidos: CSV, JSON (lista de indicadores), MISP JSON y listas
-planas de hashes SHA-256 (un hash por línea).
+Supported formats: CSV, JSON (list of indicators), MISP JSON, and plain lists
+of SHA-256 hashes (one hash per line).
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ def parse_json(text: str) -> list[IocRecord]:
             [payload],
         )
     if not isinstance(payload, list):
-        raise TypeError("El JSON debe contener una lista de indicadores")
+        raise TypeError("The JSON must contain a list of indicators")
     return [record for item in payload if isinstance(item, dict) if (record := _record(item))]
 
 
@@ -164,7 +164,7 @@ PARSERS: dict[str, Callable[[str], list[IocRecord]]] = {
 def detect_format(path: str | Path, text: str, requested: str = "auto") -> str:
     if requested != "auto":
         if requested not in PARSERS:
-            raise ValueError(f"Formato desconocido: {requested}")
+            raise ValueError(f"Unknown format: {requested}")
         return requested
     suffix = Path(path).suffix.lower()
     if suffix == ".csv":
@@ -201,7 +201,7 @@ def import_feed(
     revision: int | None = None,
     dry_run: bool = False,
 ) -> ImportReport:
-    """Importa un feed a la base de firmas y devuelve un informe."""
+    """Imports a feed into the signature database and returns a report."""
     source_file = Path(source_path)
     target = Path(target_path)
     text = source_file.read_text(encoding="utf-8-sig", errors="replace")
@@ -214,7 +214,7 @@ def import_feed(
     else:
         database = _new_database()
     if not isinstance(database, dict):
-        raise TypeError("La base de firmas destino debe ser un objeto JSON")
+        raise TypeError("The target signature database must be a JSON object")
     for key in ("hashes", "filenames", "content"):
         database.setdefault(key, {} if key == "hashes" else [])
 
@@ -236,12 +236,12 @@ def import_feed(
             severity = Severity.parse(record.severity).value
         except ValueError:
             severity = "high"
-        description = record.description or f"IOC importado desde {source}"
+        description = record.description or f"IOC imported from {source}"
 
         if record.kind == "hash":
             value = record.value.lower().strip()
             if not _HASH_RE.match(value):
-                report.errors.append(f"SHA-256 inválido en el registro {index}")
+                report.errors.append(f"Invalid SHA-256 in record {index}")
                 continue
             if value in existing_hashes:
                 report.duplicates += 1
@@ -255,12 +255,12 @@ def import_feed(
             report.added_hashes += 1
         else:
             if len(record.value) > 4096:
-                report.errors.append(f"Patrón demasiado largo en el registro {index}")
+                report.errors.append(f"Pattern too long in record {index}")
                 continue
             try:
                 re.compile(record.value.encode("utf-8"), re.IGNORECASE)
             except re.error as exc:
-                report.errors.append(f"Patrón inválido en el registro {index}: {exc}")
+                report.errors.append(f"Invalid pattern in record {index}: {exc}")
                 continue
             rule = {
                 "id": rule_id,

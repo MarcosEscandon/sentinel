@@ -12,7 +12,7 @@ def _fixture_db():
                     "id": "MARK",
                     "pattern": "SENTINEL_TEST_MARKER",
                     "severity": "low",
-                    "description": "marcador",
+                    "description": "marker",
                 }
             ],
         }

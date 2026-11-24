@@ -1,4 +1,4 @@
-"""Orquestación del escaneo de archivos, contenedores y directorios."""
+"""Orchestration of file, container, and directory scanning."""
 
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ from .signatures import SignatureDatabase
 from .vba import analyze_macro_entries
 
 ProgressCallback = Callable[[str, str, int], None]
-"""Firma: ``(evento, ruta, contador)`` donde evento ∈ file|skip|error|finding."""
+"""Signature: ``(event, path, count)`` where event ∈ file|skip|error|finding."""
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _READ_CHUNK = 1024 * 1024
 
 
 def _is_reparse_point(path: Path) -> bool:
-    """Detecta junctions y reparse points de Windows (``islink`` no los cubre)."""
+    """Detects Windows junctions and reparse points (not covered by ``islink``)."""
     if os.name != "nt":
         return False
     try:
@@ -39,7 +39,7 @@ def _is_reparse_point(path: Path) -> bool:
 
 
 class Scanner:
-    """Escanea rutas aplicando firmas, heurística, YARA y contenedores."""
+    """Scans paths using signatures, heuristics, YARA, and containers."""
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class Scanner:
         targets: Sequence[str | Path] | str | Path,
         on_progress: ProgressCallback | None = None,
     ) -> ScanResult:
-        """Analiza archivos o carpetas y devuelve un informe agregado."""
+        """Analyzes files or directories and returns an aggregated report."""
         if isinstance(targets, (str, Path)):
             targets = [targets]
         roots = [str(Path(item)) for item in targets]
@@ -126,7 +126,7 @@ class Scanner:
                 yield target
                 return
             if not target.is_dir():
-                result.errors.append({"path": str(target), "error": "la ruta no existe"})
+                result.errors.append({"path": str(target), "error": "path does not exist"})
                 self._emit(callback, "error", str(target), len(result.errors))
                 return
         except OSError as exc:
@@ -158,7 +158,7 @@ class Scanner:
                 yield path
 
     def _scan_file(self, path: Path, need_hash: bool) -> ScanResult:
-        """Analiza un archivo y devuelve un resultado parcial (seguro para hilos)."""
+        """Analyzes a file and returns a partial result (thread-safe)."""
         cfg = self.config
         result = ScanResult(roots=[])
         try:
@@ -211,7 +211,7 @@ class Scanner:
             payload = path.read_bytes()
             entries = unpack(payload, path.name, self.config)
         except ContainerError as exc:
-            result.errors.append({"path": str(path), "error": f"contenedor: {exc}"})
+            result.errors.append({"path": str(path), "error": f"container: {exc}"})
             return
         except (
             OSError,
@@ -221,13 +221,13 @@ class Scanner:
             tarfile.TarError,
             zipfile.BadZipFile,
         ) as exc:
-            result.errors.append({"path": str(path), "error": f"contenedor ilegible: {exc}"})
+            result.errors.append({"path": str(path), "error": f"unreadable container: {exc}"})
             return
 
         result.container_entries += len(entries)
         macro_paths = {item.path for item in find_macro_entries(entries)}
 
-        # Analiza el código VBA una sola vez y lo asocia a vbaProject.bin.
+        # Analyze the VBA code once and attach it to vbaProject.bin.
         vba_hits = analyze_macro_entries(entries)
         vba_path = next(
             (
@@ -253,7 +253,7 @@ class Scanner:
                         rule_id="OFFICE-MACRO",
                         detection=Detection.HEURISTIC,
                         severity=Severity.MEDIUM,
-                        description="Proyecto VBA/macros incrustado en un documento Office",
+                        description="VBA/macro project embedded in an Office document",
                         indicators=(f"macro: {entry.path}",),
                     )
                 )
@@ -266,7 +266,7 @@ class Scanner:
                         detection=hit.detection,
                         severity=hit.severity,
                         description=hit.description,
-                        indicators=hit.indicators + ("entrada truncada",),
+                        indicators=hit.indicators + ("truncated entry",),
                     )
                     for hit in hits
                 ]
@@ -277,7 +277,7 @@ class Scanner:
     def _detect(
         self, label: str, sample: bytes, size: int, sha256: str
     ) -> tuple[list[RuleHit], float]:
-        """Aplica todos los detectores a una muestra y devuelve impactos únicos."""
+        """Applies all detectors to a sample and returns unique hits."""
         hits: list[RuleHit] = []
         hits.extend(self.signatures.match_filename(Path(label).name))
         hits.extend(self.signatures.match_hash(sha256))
@@ -303,7 +303,7 @@ class Scanner:
         size: int,
         container: str = "",
     ) -> None:
-        indicators_prefix = (f"contenedor: {container}",) if container else ()
+        indicators_prefix = (f"container: {container}",) if container else ()
         for hit in hits:
             result.findings.append(
                 Finding(
@@ -321,7 +321,7 @@ class Scanner:
 
     @staticmethod
     def _dedupe(hits: Iterable[RuleHit]) -> list[RuleHit]:
-        """Elimina reglas repetidas conservando la mayor severidad."""
+        """Removes duplicate rules while keeping the highest severity."""
         by_id: dict[str, RuleHit] = {}
         for hit in hits:
             existing = by_id.get(hit.rule_id)
@@ -331,7 +331,7 @@ class Scanner:
 
 
 def summarize(result: ScanResult) -> dict[str, object]:
-    """Resumen rápido para uso en scripts."""
+    """Quick summary for use in scripts."""
     by_severity: dict[str, int] = {}
     for finding in result.findings:
         key = finding.severity.value

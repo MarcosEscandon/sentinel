@@ -9,8 +9,8 @@ from sentinel.engine.signatures import SignatureDatabase
 
 
 def test_scans_file_and_matches_all_engines(tmp_path, sample_db, tuned_config):
-    target = tmp_path / "MARCADOR.bad"
-    target.write_bytes(b"contenido con MARCADOR")
+    target = tmp_path / "MARKER.bad"
+    target.write_bytes(b"content with MARKER")
     result = Scanner(sample_db, tuned_config, yara=None).scan([target])
 
     assert result.files_scanned == 1
@@ -24,8 +24,8 @@ def test_recursive_scan_respects_excludes(tmp_path, sample_db, tuned_config):
     excluded = tmp_path / "node_modules"
     included.mkdir()
     excluded.mkdir()
-    (included / "a.bad").write_bytes(b"MARCADOR")
-    (excluded / "b.bad").write_bytes(b"MARCADOR")
+    (included / "a.bad").write_bytes(b"MARKER")
+    (excluded / "b.bad").write_bytes(b"MARKER")
 
     result = Scanner(sample_db, tuned_config, yara=None).scan([tmp_path])
     assert result.files_scanned == 1
@@ -36,7 +36,7 @@ def test_size_limit_and_missing_target(tmp_path, sample_db, tuned_config):
     big = tmp_path / "big.bad"
     big.write_bytes(b"x" * 1000)
     config = ScanConfig(max_file_size=100, sample_size=100)
-    result = Scanner(sample_db, config, yara=None).scan([big, tmp_path / "no-existe"])
+    result = Scanner(sample_db, config, yara=None).scan([big, tmp_path / "missing"])
     assert result.files_scanned == 0
     assert result.skipped == 1
     assert len(result.errors) == 1
@@ -44,7 +44,7 @@ def test_size_limit_and_missing_target(tmp_path, sample_db, tuned_config):
 
 def test_single_string_target(tmp_path, sample_db, tuned_config):
     target = tmp_path / "a.bad"
-    target.write_bytes(b" MARCADOR ")
+    target.write_bytes(b" MARKER ")
     result = Scanner(sample_db, tuned_config, yara=None).scan(str(target))
     assert result.files_scanned == 1
     assert any(item.detection is Detection.CONTENT for item in result.findings)
@@ -52,7 +52,7 @@ def test_single_string_target(tmp_path, sample_db, tuned_config):
 
 def test_progress_callback(tmp_path, sample_db, tuned_config):
     target = tmp_path / "a.bad"
-    target.write_bytes(b" MARCADOR ")
+    target.write_bytes(b" MARKER ")
     events = []
     result = Scanner(sample_db, tuned_config, yara=None).scan(
         [target], lambda event, path, count: events.append(event)
@@ -64,8 +64,8 @@ def test_progress_callback(tmp_path, sample_db, tuned_config):
 def test_allowlist_skips_by_path_and_hash(tmp_path, sample_db, tuned_config):
     first = tmp_path / "a.bad"
     second = tmp_path / "b.bad"
-    first.write_bytes(b"MARCADOR")
-    second.write_bytes(b"MARCADOR")
+    first.write_bytes(b"MARKER")
+    second.write_bytes(b"MARKER")
     rules = AllowList(
         paths=frozenset({normalize_path(first)}),
         hashes=frozenset({hashlib.sha256(second.read_bytes()).hexdigest()}),

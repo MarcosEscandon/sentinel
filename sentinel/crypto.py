@@ -1,7 +1,7 @@
-"""Firma y verificación Ed25519 de paquetes de firmas.
+"""Ed25519 signing and verification of signature packages.
 
-La dependencia ``cryptography`` es opcional para el escaneo normal, pero
-obligatoria para firmar o actualizar la base de firmas::
+The ``cryptography`` dependency is optional for normal scanning, but required
+to sign or update the signature database::
 
     pip install -e ".[signing]"
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-try:  #pragma: no cover - depende del entorno
+try:  #pragma: no cover - depends on the environment
     from cryptography.exceptions import InvalidSignature as _InvalidSignature
     from cryptography.hazmat.primitives import serialization as _serialization
     from cryptography.hazmat.primitives.asymmetric import ed25519 as _ed25519
@@ -21,7 +21,7 @@ except ImportError:  # pragma: no cover
 
 
 class SigningUnavailable(RuntimeError):
-    """Se lanza cuando se requiere firma y ``cryptography`` no está instalado."""
+    """Raised when signing is required but ``cryptography`` is not installed."""
 
 
 def available() -> bool:
@@ -31,14 +31,14 @@ def available() -> bool:
 def _require() -> None:
     if not available():
         raise SigningUnavailable(
-            "cryptography no está instalado. Instálalo con: pip install -e '.[signing]'"
+            "cryptography is not installed. Install it with: pip install -e '.[signing]'"
         )
 
 
 def generate_keypair(private_path: str | Path, public_path: str | Path) -> None:
-    """Genera un par de claves Ed25519 y lo guarda en PEM.
+    """Generates an Ed25519 key pair and saves it in PEM format.
 
-    La clave privada se crea con permisos restringidos en sistemas POSIX.
+    The private key is created with restricted permissions on POSIX systems.
     """
     _require()
     private = Path(private_path)
@@ -65,22 +65,22 @@ def generate_keypair(private_path: str | Path, public_path: str | Path) -> None:
 
 
 def sign_payload(payload: bytes, private_key_path: str | Path) -> bytes:
-    """Devuelve la firma Ed25519 (64 bytes) de ``payload``."""
+    """Returns the Ed25519 signature (64 bytes) of ``payload``."""
     _require()
     data = Path(private_key_path).read_bytes()
     key = _serialization.load_pem_private_key(data, password=None)
     if not isinstance(key, _ed25519.Ed25519PrivateKey):
-        raise TypeError("La clave privada debe ser Ed25519")
+        raise TypeError("The private key must be Ed25519")
     return key.sign(payload)
 
 
 def verify_payload(payload: bytes, signature: bytes, public_key_path: str | Path) -> bool:
-    """Comprueba la firma. Devuelve ``False`` si no coincide o es inválida."""
+    """Verifies a signature. Returns ``False`` if it does not match or is invalid."""
     _require()
     data = Path(public_key_path).read_bytes()
     key = _serialization.load_pem_public_key(data)
     if not isinstance(key, _ed25519.Ed25519PublicKey):
-        raise TypeError("La clave pública debe ser Ed25519")
+        raise TypeError("The public key must be Ed25519")
     try:
         key.verify(signature, payload)
     except (_InvalidSignature, ValueError, TypeError):

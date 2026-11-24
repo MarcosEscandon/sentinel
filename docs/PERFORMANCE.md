@@ -1,114 +1,112 @@
-# Rendimiento del escáner
+# Scanner performance
 
-Este documento describe la metodología del benchmark incluido en
-`tools/benchmark.py`, los resultados reales obtenidos y las recomendaciones
-derivadas de ellos. Los datos sin procesar están en
-`docs/benchmark-results.json`.
+This document describes the methodology of the benchmark included in
+`tools/benchmark.py`, the actual results obtained and the recommendations
+derived from them. The raw data is in `docs/benchmark-results.json`.
 
-## Metodología
+## Methodology
 
-El script genera un árbol temporal con `tempfile` (no se incluye en el
-repositorio) y lo elimina al terminar salvo que se use `--keep`. Por defecto
-crea 2000 archivos repartidos en 8 subdirectorios, con tamaños aleatorios
-uniformes entre 1 KiB y 64 KiB (63,0 MiB en total). La semilla es fija
-(`20261123`) para que el experimento sea reproducible. Cada 50 archivos se
-inserta el marcador `SENTINEL_TEST_MARKER`, reconocido por la base de firmas
-real `sentinel/data/signatures.json` (40 archivos marcados en esta ejecución).
+The script generates a temporary tree with `tempfile` (not included in the
+repository) and removes it when finished unless `--keep` is used. By default it
+creates 2000 files distributed across 8 subdirectories, with uniform random
+sizes between 1 KiB and 64 KiB (63.0 MiB in total). The seed is fixed
+(`20261123`) so that the experiment is reproducible. Every 50 files, the marker
+`SENTINEL_TEST_MARKER` is inserted, recognized by the real signature database
+`sentinel/data/signatures.json` (40 marked files in this run).
 
-Para cada valor de `--jobs` se crea un `Scanner` nuevo con un `ScanConfig`
-idéntico salvo el número de hilos, y se mide una única pasada completa con
+For each `--jobs` value a new `Scanner` is created with an identical `ScanConfig`
+except for the thread count, and a single complete pass is measured with
 `time.perf_counter()`:
 
-- configuración por defecto: `hash_all=True` (SHA-256 de todo el archivo),
-  heurística activada, análisis de contenedores activado y `sample_size=1 MiB`;
-- YARA no se ejerce porque el benchmark no inyecta un motor YARA;
-- se mide enumeración + lectura + hash + detección + fusión de resultados;
-  no se mide la generación del árbol ni la escritura del JSON de resultados;
-- `MB/s` usa MiB (1024² bytes) y `archivos/s` usa `files_scanned`.
+- default configuration: `hash_all=True` (SHA-256 of the whole file), heuristics
+  enabled, container analysis enabled and `sample_size=1 MiB`;
+- YARA is not exercised because the benchmark does not inject a YARA engine;
+- enumeration + reading + hashing + detection + result merging are measured;
+  tree generation and writing the results JSON are not measured;
+- `MB/s` uses MiB (1024² bytes) and `files/s` uses `files_scanned`.
 
-Comando ejecutado:
+Command executed:
 
 ```powershell
 python tools/benchmark.py --files 2000 --output docs/benchmark-results.json
 ```
 
-Entorno: Python 3.10.11, Windows 10 (10.0.26200), 2000 archivos, 66109688
-bytes, generado el 2026-11-23T12:59:48+00:00.
+Environment: Python 3.10.11, Windows 10 (10.0.26200), 2000 files, 66109688
+bytes, generated on 2026-11-23T12:59:48+00:00.
 
-## Resultados reales
+## Actual results
 
-| Hilos | Tiempo (s) | MB/s | Archivos/s | Hallazgos | Aceleración vs. 1 hilo |
-| ----: | ---------: | ---: | ---------: | --------: | ---------------------: |
-|     1 |     2,3863 | 26,42 |     838,12 |      1948 |                  1,00× |
-|     2 |     2,2431 | 28,11 |     891,64 |      1948 |                  1,06× |
-|     4 |     2,2036 | 28,61 |     907,61 |      1948 |                  1,08× |
-|     8 |     2,2148 | 28,47 |     903,02 |      1948 |                  1,08× |
+| Threads | Time (s) | MB/s | Files/s | Findings | Speedup vs. 1 thread |
+| ------: | ---------: | ---: | ---------: | --------: | -------------------: |
+|       1 |     2,3863 | 26,42 |     838,12 |      1948 |                 1,00× |
+|       2 |     2,2431 | 28,11 |     891,64 |      1948 |                 1,06× |
+|       4 |     2,2036 | 28,61 |     907,61 |      1948 |                 1,08× |
+|       8 |     2,2148 | 28,47 |     903,02 |      1948 |                 1,08× |
 
-Los cuatro escaneos procesaron los 2000 archivos y los 66109688 bytes, con
-0 errores. El número de hallazgos es idéntico en todas las configuraciones,
-lo que confirma que el paralelismo no altera el resultado.
+The four scans processed all 2000 files and 66109688 bytes, with 0 errors. The
+number of findings is identical across all configurations, confirming that
+parallelism does not alter the result.
 
-## Interpretación
+## Interpretation
 
-El paso de 1 a 2 hilos reduce el tiempo un 6 % (2,3863 s → 2,2431 s) y de 1
-a 4 hilos un 8 % (2,2036 s). A 8 hilos no hay mejora adicional: el tiempo
-incluso sube ligeramente (2,2148 s) respecto a 4 hilos.
+Going from 1 to 2 threads reduces the time by 6% (2.3863 s → 2.2431 s) and from
+1 to 4 threads by 8% (2.2036 s). At 8 threads there is no further improvement:
+the time even rises slightly (2.2148 s) compared with 4 threads.
 
-Este comportamiento es esperable en archivos pequeños:
+This behavior is expected for small files:
 
-- el trabajo por archivo es mayoritariamente CPU (SHA-256, expresiones
-  regulares de firmas y heurística) y el GIL impide que esos hilos ejecuten
-  bytecode Python simultáneamente;
-- las operaciones de lectura son cortas (1–64 KiB), así que el hilo de E/S se
-  bloquea poco y queda poco tiempo solapable mientras otro hilo hace CPU;
-- hay coste fijo por archivo (llamadas al sistema de archivos, creación del
-  `ScanResult` parcial, envío de futuros, fusión de hallazgos y emisión de
-  progreso). Con archivos de ~33 KiB de media, ese coste domina;
-- a partir de 4 hilos, la contention sobre el GIL y la sobrecarga del
-  `ThreadPoolExecutor` compensan la pequeña ganancia de solapamiento.
+- per-file work is mostly CPU (SHA-256, signature regular expressions and
+  heuristics) and the GIL prevents those threads from executing Python bytecode
+  simultaneously;
+- read operations are short (1–64 KiB), so the I/O thread blocks little and
+  little time remains to overlap while another thread does CPU work;
+- there is a fixed cost per file (file system calls, creation of the partial
+  `ScanResult`, future submission, finding merging and progress emission). With
+  files averaging ~33 KiB, that cost dominates;
+- from 4 threads onward, GIL contention and `ThreadPoolExecutor` overhead
+  outweigh the small overlap gain.
 
-La cifra de 1948 hallazgos no indica malware real: los datos son aleatorios y
-las heurísticas de entropía y puntuación marcan la mayoría de ellos. Lo
-importante para el benchmark es que el recuento sea constante entre hilos.
+The figure of 1948 findings does not indicate real malware: the data is random
+and the entropy and scoring heuristics flag most of them. What matters for the
+benchmark is that the count is constant across thread counts.
 
-## Recomendaciones para producción
+## Production recommendations
 
-1. Usar `--jobs 4` como punto de partida en máquinas de 4 u 8 núcleos con
-   discos SSD. Es el valor con mejor tiempo medido y deja margen para el
-   sistema operativo.
-2. No subir por encima de 8 hilos en este tipo de carga: no aporta y consume
-   más memoria y cambios de contexto. El máximo permitido por `ScanConfig` es
-   64, pero está pensado para cargas con mucha más espera en E/S.
-3. Mantener `--jobs 1` para árboles muy pequeños, depuración, o cuando se
-   necesite un orden de progreso determinista (el modo paralelo emite los
-   eventos en orden de finalización, no de entrada).
-4. En unidades de red o discos con alta latencia, volver a medir: allí el
-   solapamiento de E/S puede justificar 8 o más hilos.
-5. Ajustar la configuración antes que los hilos cuando el cuello esté en la
-   CPU: reducir `sample_size`, desactivar `hash_all` si no se necesitan hashes
-   de todos los archivos, o pasar `--no-containers` en directorios sin
-   archivos comprimidos.
-6. Excluir de antemano directorios de caché y dependencias (`node_modules`,
-   `.venv`, `__pycache__`) para no pagar el coste de archivos que no aportan
-   señal.
-7. Repetir la medición en el equipo de destino y con datos representativos
-   antes de fijar un valor en `config.json`.
+1. Use `--jobs 4` as a starting point on 4- or 8-core machines with SSDs. It is
+   the value with the best measured time and leaves headroom for the operating
+   system.
+2. Do not go above 8 threads for this type of workload: it brings no benefit and
+   consumes more memory and context switches. The maximum allowed by
+   `ScanConfig` is 64, but it is intended for workloads with much more I/O wait.
+3. Keep `--jobs 1` for very small trees, debugging, or when deterministic
+   progress order is needed (parallel mode emits events in completion order,
+   not input order).
+4. On network drives or high-latency disks, measure again: there I/O overlap may
+   justify 8 or more threads.
+5. Tune the configuration rather than the thread count when the bottleneck is
+   CPU: reduce `sample_size`, disable `hash_all` if hashes of all files are not
+   needed, or pass `--no-containers` in directories without compressed files.
+6. Exclude cache and dependency directories in advance (`node_modules`,
+   `.venv`, `__pycache__`) to avoid paying the cost of files that provide no
+   signal.
+7. Repeat the measurement on the target machine and with representative data
+   before fixing a value in `config.json`.
 
-## Límites conocidos
+## Known limitations
 
-- Una sola ejecución por configuración: no hay media, desviación típica ni
-  warm-up. Diferencias inferiores al 5 % (como 4 frente a 8 hilos) no son
-  estadísticamente significativas.
-- Los tamaños están limitados a 1–64 KiB. Los resultados no extrapolan a
-  archivos grandes, donde el hash secuencial y la lectura dominan y el
-  solapamiento de E/S puede comportarse distinto.
-- El árbol se crea en el directorio temporal del sistema (`%TEMP%` en
-  Windows). La caché del sistema de archivos y el antivirus pueden influir;
-  no se controla ni se mide ese efecto.
-- No se ejercen YARA, reglas `regex` con timeout reales ni contenedores
-  comprimidos (los archivos generados son `.bin`), aunque la configuración
-  los tenga activados.
-- No se mide consumo de memoria, uso de CPU por núcleo ni latencia por
-  archivo: solo tiempo total y throughput agregado.
-- El equipo de medida puede estar compartido; los números son orientativos y
-  deben compararse solo entre filas de la misma ejecución.
+- A single run per configuration: there is no mean, standard deviation or
+  warm-up. Differences below 5% (such as 4 vs. 8 threads) are not statistically
+  significant.
+- Sizes are limited to 1–64 KiB. The results do not extrapolate to large files,
+  where sequential hashing and reading dominate and I/O overlap may behave
+  differently.
+- The tree is created in the system's temporary directory (`%TEMP%` on Windows).
+  The file system cache and the antivirus may influence the results; that
+  effect is neither controlled nor measured.
+- YARA, rules with real `regex` timeouts and compressed containers are not
+  exercised (the generated files are `.bin`), even though the configuration
+  enables them.
+- Memory consumption, per-core CPU usage and per-file latency are not measured:
+  only total time and aggregate throughput.
+- The measurement machine may be shared; the numbers are indicative and should
+  only be compared between rows of the same run.

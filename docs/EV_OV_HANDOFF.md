@@ -1,74 +1,74 @@
-# Handoff: certificado EV/OV y confianza en Windows
+# Handoff: EV/OV certificate and trust on Windows
 
-Este documento es un **procedimiento de entrega**, no una verificación
-realizada: en este entorno no se compró ningún certificado ni se modificó la
-política de Device Guard. Describe exactamente qué falta y cómo hacerlo.
+This document is a **handoff procedure**, not a verification already performed:
+no certificate was purchased and no Device Guard policy was modified in this
+environment. It describes exactly what is missing and how to do it.
 
-## 1. Estado actual
+## 1. Current status
 
-| Elemento | Situación hoy |
+| Item | Situation today |
 | --- | --- |
-| Firma Authenticode | `dist\sentinel.exe` está firmado con un certificado **autofirmado de prueba** (`CN=Sentinel Test (self-signed)`, thumbprint `C73298594AF271C492DB91FAF35123B755E86F74`). |
-| Verificación local | Añadiendo ese certificado a `CurrentUser\Root` y `TrustedPublisher` se consiguió `signtool verify /pa` sin errores; se retiró justo después. |
-| Device Guard / WDAC | En una sesión posterior, el exe fue bloqueado por Application Control (`cmd` devuelve `4551`). Confiar el certificado solo al usuario **no bastó**. |
-| Manifiesto interno | `manifest.json` y sus datos se firman con Ed25519 mediante `SENTINEL_PRIVATE_KEY`; es independiente de Authenticode. |
-| Código | `packaging/build.ps1 -Sign` ya selecciona el certificado por `SENTINEL_CERT_THUMBPRINT` (o `SENTINEL_CERT_SUBJECT`) y aplica `/fd SHA256 /tr <URL> /td SHA256`. |
+| Authenticode signature | `dist\sentinel.exe` is signed with a **self-signed test certificate** (`CN=Sentinel Test (self-signed)`, thumbprint `C73298594AF271C492DB91FAF35123B755E86F74`). |
+| Local verification | Adding that certificate to `CurrentUser\Root` and `TrustedPublisher` achieved `signtool verify /pa` without errors; it was removed immediately afterwards. |
+| Device Guard / WDAC | In a later session, the exe was blocked by Application Control (`cmd` returned `4551`). Trusting the certificate for the current user alone **was not enough**. |
+| Internal manifest | `manifest.json` and its data are signed with Ed25519 via `SENTINEL_PRIVATE_KEY`; this is independent of Authenticode. |
+| Code | `packaging/build.ps1 -Sign` already selects the certificate by `SENTINEL_CERT_THUMBPRINT` (or `SENTINEL_CERT_SUBJECT`) and applies `/fd SHA256 /tr <URL> /td SHA256`. |
 
-Conclusión: el pipeline de firma está listo; falta un certificado de una CA
-pública de confianza y que TI actualice la política de control de aplicaciones.
+Conclusion: the signing pipeline is ready; what is missing is a certificate from
+a trusted public CA and an application control policy update by IT.
 
-## 2. EV frente a OV
+## 2. EV vs. OV
 
 | | EV (Extended Validation) | OV (Organization Validation) |
 | --- | --- | --- |
-| Identidad | Valida persona jurídica con verificación estricta | Valida organización, con menos rigor |
-| Clave privada | Obligatoria en token/HSM no exportable (o servicio de firma remota) | Puede entregarse en PFX; aún así conviene HSM |
-| SmartScreen | Reputación inmediata al firmar | Hay que acumular reputación (descargas, reporte a Microsoft) |
-| Coste / plazo | Más caro y lento | Más barato y rápido |
-| Recomendación | **Preferido** para un antivirus que se descarga desde internet | Aceptable solo con plan de reputación y control de WDAC |
+| Identity | Validates a legal entity with strict verification | Validates an organization, with less rigor |
+| Private key | Mandatory on a non-exportable token/HSM (or remote signing service) | May be delivered as a PFX; an HSM is still advisable |
+| SmartScreen | Immediate reputation upon signing | Reputation must be accumulated (downloads, report to Microsoft) |
+| Cost / lead time | More expensive and slower | Cheaper and faster |
+| Recommendation | **Preferred** for an antivirus downloaded from the internet | Acceptable only with a reputation plan and WDAC control |
 
-Emisores habituales: DigiCert, Sectigo, GlobalSign, Entrust (o revendedores
-autorizados). Se requiere entidad legal, datos de contacto verificables y,
-para EV, token físico e instalación de su middleware.
+Common issuers: DigiCert, Sectigo, GlobalSign, Entrust (or authorized
+resellers). A legal entity, verifiable contact details and, for EV, a physical
+token and its middleware installed are required.
 
-## 3. Emisión e instalación del certificado
+## 3. Certificate issuance and installation
 
-1. Solicitar el certificado indicando que será para **code signing de un
-   ejecutable Windows x64**. En EV, la clave se genera dentro del token; en
-   OV, seguir las instrucciones de la CA para el CSR e importar el PFX.
-2. **Nunca** copiar la clave privada al repositorio ni a `packaging/keys/`.
-   Esa carpeta ya está excluida por `.gitignore` y solo debe contener la clave
-   Ed25519 del manifiesto, distinta de la clave Authenticode.
-3. Conectar el token (EV) e importar el certificado en el almacén del usuario:
+1. Request the certificate specifying that it will be used for **code signing of
+   a Windows x64 executable**. For EV, the key is generated inside the token;
+   for OV, follow the CA's instructions for the CSR and import the PFX.
+2. **Never** copy the private key to the repository or to `packaging/keys/`.
+   That folder is already excluded by `.gitignore` and should only contain the
+   Ed25519 key for the manifest, which is different from the Authenticode key.
+3. Connect the token (EV) and import the certificate into the user store:
 
    ```powershell
    Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
        Select-Object Subject, Thumbprint, NotAfter
    ```
 
-4. Guardar el thumbprint sin espacios y la URL de timestamp RFC 3161 que
-   publique la CA. El script usa `http://timestamp.digicert.com` por defecto;
-   conviene sobrescribirlo con `SENTINEL_TIMESTAMP_URL`.
+4. Save the thumbprint without spaces and the RFC 3161 timestamp URL published
+   by the CA. The script uses `http://timestamp.digicert.com` by default; it is
+   advisable to override it with `SENTINEL_TIMESTAMP_URL`.
 
-## 4. Firma del release
+## 4. Release signing
 
 ```powershell
-$env:SENTINEL_CERT_THUMBPRINT = '<THUMBPRINT_SIN_ESPACIOS>'
-$env:SENTINEL_TIMESTAMP_URL   = '<URL_RFC3161_DE_LA_CA>'
-$env:SENTINEL_PRIVATE_KEY     = 'C:\seguro\signing-ed25519.pem'  # solo manifiesto
+$env:SENTINEL_CERT_THUMBPRINT = '<THUMBPRINT_NO_SPACES>'
+$env:SENTINEL_TIMESTAMP_URL   = '<CA_RFC3161_URL>'
+$env:SENTINEL_PRIVATE_KEY     = 'C:\secure\signing-ed25519.pem'  # manifest only
 
-# Release: sin -Console (la consola se usó únicamente para validar aquí).
+# Release: without -Console (the console was used only for validation here).
 .\packaging\build.ps1 -Sign
 ```
 
-Si hay que firmar un exe ya generado:
+If an already built exe needs to be signed:
 
 ```powershell
 signtool sign /fd SHA256 /tr $env:SENTINEL_TIMESTAMP_URL /td SHA256 `
   /sha1 $env:SENTINEL_CERT_THUMBPRINT dist\sentinel.exe
 ```
 
-Verificación obligatoria:
+Mandatory verification:
 
 ```powershell
 signtool verify /pa /v dist\sentinel.exe
@@ -76,20 +76,19 @@ Get-AuthenticodeSignature -LiteralPath dist\sentinel.exe |
     Format-List Status, StatusMessage, SignerCertificate
 ```
 
-`Status` debe ser `Valid` y `StatusMessage` debe indicar que la cadena termina
-en una raíz de confianza. Sin timestamp, la firma deja de ser válida cuando
-caduca el certificado: el build siempre debe usar `/tr` **y** `/td SHA256`.
+`Status` must be `Valid` and `StatusMessage` must indicate that the chain ends
+in a trusted root. Without a timestamp, the signature stops being valid when the
+certificate expires: the build must always use `/tr` **and** `/td SHA256`.
 
-## 5. Confianza en AppLocker / Device Guard
+## 5. Trust in AppLocker / Device Guard
 
-Con un certificado EV/OV, la CAD raíz ya está en el almacén de Windows, así
-que **no hay que añadir nada a `Root` ni a `TrustedPublisher`**. Lo que sí
-puede hacer falta es una regla que permita el binario en la política de
-control de aplicaciones.
+With an EV/OV certificate, the root CA is already in the Windows store, so
+**nothing needs to be added to `Root` or `TrustedPublisher`**. What may be
+needed is a rule allowing the binary in the application control policy.
 
 ### AppLocker
 
-Ejecutar en una sesión con administrador y revisar el XML antes de aplicarlo:
+Run in an administrator session and review the XML before applying it:
 
 ```powershell
 Get-AppLockerFileInformation -Path .\dist\sentinel.exe |
@@ -100,44 +99,44 @@ Test-AppLockerPolicy -XmlPolicy .\sentinel-publisher.xml -Path .\dist\sentinel.e
 Set-AppLockerPolicy -XmlPolicy .\sentinel-publisher.xml -Merge
 ```
 
-La regla `Publisher` sigue siendo válida en versiones futuras firmadas por el
-mismo certificado; una regla de hash habría que regenerarla en cada release.
+The `Publisher` rule remains valid for future versions signed with the same
+certificate; a hash rule would have to be regenerated for every release.
 
 ### WDAC / App Control for Business
 
-Trabajar con el equipo de TI y empezar en modo auditoría:
+Work with the IT team and start in audit mode:
 
 ```powershell
-# Directorio que contenga solo el exe firmado.
+# Directory containing only the signed exe.
 New-CIPolicy -MultiplePolicyFormat -Level Publisher -UserPEs `
   -FilePath .\sentinel-supplemental.xml -ScanPath .\dist
 ConvertFrom-CIPolicy .\sentinel-supplemental.xml .\sentinel-supplemental.bin
 ```
 
-Desplegar el `.bin` con Intune, GPO o `CiTool`, dejarlo primero en auditoría y
-revisar `Microsoft-Windows-CodeIntegrity/Operational` antes de imponerlo.
-`-Level Publisher` es preferible a `Hash`: no exige reemitir la política en
-cada build. Si se usa `FilePublisher`, conviene fijar una versión mínima.
+Deploy the `.bin` with Intune, GPO or `CiTool`, leave it in audit mode first and
+review `Microsoft-Windows-CodeIntegrity/Operational` before enforcing it.
+`-Level Publisher` is preferable to `Hash`: it does not require reissuing the
+policy for every build. If `FilePublisher` is used, a minimum version should be
+pinned.
 
-**No** resolver el bloqueo actual añadiendo el certificado autofirmado a los
-almacenes del usuario: eso solo funciona para `signtool verify`, no para una
-política WDAC en modo imposición.
+**Do not** resolve the current block by adding the self-signed certificate to
+the user stores: that only works for `signtool verify`, not for a WDAC policy in
+enforcement mode.
 
-## 6. Evidencia a entregar con el release
+## 6. Evidence to deliver with the release
 
-- Subject, emisor, thumbprint, fecha de caducidad y huella de la CA.
-- Salida completa de `signtool verify /pa /v` y de `Get-AuthenticodeSignature`.
-- URL de timestamp y confirmación de que el sello es RFC 3161 con SHA-256.
-- XML de la regla de AppLocker o la política suplementaria de WDAC.
-- Resultado de `Test-AppLockerPolicy` / eventos de Code Integrity en modo
-  auditoría.
-- Prueba en una VM limpia, fuera del equipo de desarrollo: descarga del exe,
-  ejecución de `--version`, `sentinel selftest`, escaneo de EICAR y cuarentena.
-- Para OV: captura del diálogo de SmartScreen tras la descarga y plan de
-  reputación (informe a Microsoft Defender for Endpoint / SmartScreen).
-- Verificación del manifiesto Ed25519 incluido:
+- Subject, issuer, thumbprint, expiration date and CA fingerprint.
+- Full output of `signtool verify /pa /v` and `Get-AuthenticodeSignature`.
+- Timestamp URL and confirmation that the timestamp is RFC 3161 with SHA-256.
+- AppLocker rule XML or the WDAC supplemental policy.
+- Result of `Test-AppLockerPolicy` / Code Integrity events in audit mode.
+- Test on a clean VM, outside the development machine: download the exe, run
+  `--version`, `sentinel selftest`, an EICAR scan and quarantine.
+- For OV: screenshot of the SmartScreen dialog after download and a reputation
+  plan (report to Microsoft Defender for Endpoint / SmartScreen).
+- Verification of the included Ed25519 manifest:
 
-  Solo en un build onedir (`-OneFile:$false`):
+  Only in an onedir build (`-OneFile:$false`):
 
   ```powershell
   sentinel integrity verify _internal\sentinel\data `
@@ -145,13 +144,13 @@ política WDAC en modo imposición.
     --public-key _internal\sentinel\data\signatures.json.pub
   ```
 
-  En el build onefile por defecto no hay `_internal`; verifica la copia de
-  `sentinel/data` del árbol de fuentes.
+  In the default onefile build there is no `_internal`; verify the
+  `sentinel/data` copy from the source tree.
 
-## 7. Límites que este handoff no resuelve
+## 7. Limitations this handoff does not resolve
 
-Un certificado EV/OV elimina el bloqueo por confianza y mejora SmartScreen,
-pero **no** convierte al prototipo en un antivirus production-ready: siguen
-pendientes el filtro de sistema de archivos a nivel kernel, la auditoría
-externa independiente, una base de firmas comercial y la rotación de claves.
-Estos límites están descritos en `README.md` y `docs/THREAT_MODEL.md`.
+An EV/OV certificate removes the trust block and improves SmartScreen, but it
+**does not** turn the prototype into a production-ready antivirus: the
+kernel-level file system filter, the independent external audit, a commercial
+signature database and key rotation remain outstanding. These limitations are
+described in `README.md` and `docs/THREAT_MODEL.md`.

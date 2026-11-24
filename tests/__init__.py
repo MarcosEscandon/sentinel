@@ -1,1 +1,1 @@
-"""Tests del paquete sentinel."""
+"""Tests for the sentinel package."""

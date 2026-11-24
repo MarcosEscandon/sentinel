@@ -1,8 +1,8 @@
-"""Verificación de integridad de archivos y de firmas de Sentinel.
+"""Integrity verification of Sentinel files and signatures.
 
-El manifiesto guarda rutas relativas POSIX, SHA-256 y tamaño. Puede generarse
-para el árbol de fuentes o para el directorio de una instalación y permite
-detectar archivos borrados, modificados o añadidos.
+The manifest stores POSIX relative paths, SHA-256 hashes, and sizes. It can be
+generated for the source tree or for an installation directory and makes it
+possible to detect deleted, modified, or added files.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ _READ_CHUNK = 1024 * 1024
 _EXCLUDED_DIRS = frozenset(
     {"__pycache__", ".pytest_cache", ".ruff_cache", "build", "dist", ".venv"}
 )
-# Solo se excluye la firma del propio manifiesto (si se genera); el resto de
-# firmas .sig del paquete SÍ se verifican para detectar manipulaciones.
+# Only the manifest's own signature is excluded (if generated); all other .sig
+# signatures in the package ARE verified to detect tampering.
 _EXCLUDED_FILE_GLOBS = (
     "*.pyc",
     "*.key",
@@ -38,28 +38,28 @@ _EXCLUDED_FILE_GLOBS = (
 
 @dataclass(frozen=True)
 class FileRecord:
-    """Registro de un archivo dentro del manifiesto."""
+    """A record for a file in the manifest."""
 
     path: str
     sha256: str
     size: int
 
     def to_dict(self) -> dict[str, Any]:
-        """Devuelve el registro como diccionario serializable."""
+        """Returns the record as a serializable dictionary."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileRecord:
-        """Reconstruye un registro desde un elemento de ``files`` del JSON."""
+        """Rebuilds a record from a ``files`` element of the JSON."""
         return cls(str(data["path"]), str(data["sha256"]), int(data["size"]))
 
 
 @dataclass(frozen=True)
 class IntegrityReport:
-    """Resultado de comparar un árbol con su manifiesto.
+    """Result of comparing a tree with its manifest.
 
-    ``expected``, ``missing``, ``modified`` y ``added`` son recuentos; el
-    detalle por archivo (con estado y hashes) está en ``details``.
+    ``expected``, ``missing``, ``modified``, and ``added`` are counts; the
+    per-file detail (with status and hashes) is in ``details``.
     """
 
     ok: bool
@@ -70,12 +70,12 @@ class IntegrityReport:
     details: list[dict[str, Any]]
 
     def to_dict(self) -> dict[str, Any]:
-        """Devuelve el informe completo como diccionario serializable."""
+        """Returns the full report as a serializable dictionary."""
         return asdict(self)
 
 
 def _relative(root: Path, target: Path) -> str | None:
-    """Devuelve la ruta relativa POSIX, o ``None`` si queda fuera de ``root``."""
+    """Returns the POSIX relative path, or ``None`` if it is outside ``root``."""
     try:
         return target.resolve().relative_to(root.resolve()).as_posix()
     except (OSError, ValueError):
@@ -83,7 +83,7 @@ def _relative(root: Path, target: Path) -> str | None:
 
 
 def _matches_extra(relative: str, extra: tuple[str, ...]) -> bool:
-    """Comprueba patrones adicionales contra la ruta, el nombre y sus partes."""
+    """Checks additional patterns against the path, the name, and their parts."""
     lowered = relative.lower()
     name = PurePosixPath(relative).name.lower()
     for raw in extra:
@@ -104,10 +104,10 @@ def _matches_extra(relative: str, extra: tuple[str, ...]) -> bool:
 
 
 def _is_excluded(relative: str, *, is_dir: bool, extra: tuple[str, ...]) -> bool:
-    """Aplica las exclusiones por defecto y las proporcionadas por el caller."""
+    """Applies the default exclusions and those provided by the caller."""
     parts = relative.lower().split("/")
-    # ``quarantine*`` se refiere al almacén de cuarentena (directorios), no a
-    # módulos como ``sentinel/core/quarantine.py``.
+    # ``quarantine*`` refers to the quarantine store (directories), not to
+    # modules such as ``sentinel/core/quarantine.py``.
     ancestors = parts if is_dir else parts[:-1]
     if any(
         part in _EXCLUDED_DIRS or part.startswith("quarantine") for part in ancestors
@@ -121,7 +121,7 @@ def _is_excluded(relative: str, *, is_dir: bool, extra: tuple[str, ...]) -> bool
 
 
 def _iter_files(root: Path, extra: tuple[str, ...] = ()) -> list[tuple[str, Path]]:
-    """Lista archivos no excluidos como pares ``(ruta_relativa, ruta)``."""
+    """Lists non-excluded files as ``(relative_path, path)`` pairs."""
     found: list[tuple[str, Path]] = []
     for current, dirs, files in os.walk(root, topdown=True):
         base = Path(current)
@@ -142,7 +142,7 @@ def _iter_files(root: Path, extra: tuple[str, ...] = ()) -> list[tuple[str, Path
 
 
 def _sha256(path: Path) -> str:
-    """Calcula el SHA-256 de un archivo leyendo en bloques de 1 MiB."""
+    """Computes the SHA-256 of a file by reading it in 1 MiB chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(_READ_CHUNK), b""):
@@ -153,11 +153,11 @@ def _sha256(path: Path) -> str:
 def build_manifest(
     root: str | Path, output: str | Path, exclude: Iterable[str] = ()
 ) -> dict[str, Any]:
-    """Genera y escribe un manifiesto SHA-256 del árbol ``root``.
+    """Generates and writes a SHA-256 manifest of the ``root`` tree.
 
-    El propio manifiesto se excluye siempre para que regenerarlo no lo añada
-    como archivo nuevo. ``exclude`` admite patrones ``fnmatch`` sobre la ruta
-    relativa, el nombre o cada componente del camino.
+    The manifest itself is always excluded so that regenerating it does not add
+    it as a new file. ``exclude`` accepts ``fnmatch`` patterns over the relative
+    path, the name, or each component of the path.
     """
     root_path = Path(root)
     output_path = Path(output)
@@ -172,7 +172,7 @@ def build_manifest(
             size = path.stat().st_size
             digest = _sha256(path)
         except OSError:
-            # El archivo pudo desaparecer mientras se recorría el árbol.
+            # The file may have disappeared while the tree was being walked.
             continue
         records.append(FileRecord(relative, digest, size).to_dict())
 
@@ -194,7 +194,7 @@ def _detail(
     expected: FileRecord | None,
     actual: FileRecord | None,
 ) -> dict[str, Any]:
-    """Construye una entrada uniforme para ``IntegrityReport.details``."""
+    """Builds a uniform entry for ``IntegrityReport.details``."""
     return {
         "status": status,
         "path": path,
@@ -206,28 +206,28 @@ def _detail(
 
 
 def verify_manifest(root: str | Path, manifest: str | Path) -> IntegrityReport:
-    """Compara el árbol con un manifiesto y detecta borrados, cambios y altas.
+    """Compares the tree with a manifest and detects deletions, changes, and additions.
 
-    Los archivos supervisados que ya no existen se contabilizan como
-    ``missing``; nunca se lanza una excepción por ellos. Sí se lanza
-    ``ValueError``/``TypeError`` si el propio manifiesto no existe o es inválido.
+    Monitored files that no longer exist are counted as ``missing``; no exception
+    is raised because of them. ``ValueError``/``TypeError`` is raised only if the
+    manifest itself is missing or invalid.
     """
     root_path = Path(root)
     manifest_path = Path(manifest)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise TypeError("El manifiesto debe ser un objeto JSON")
+        raise TypeError("The manifest must be a JSON object")
     if payload.get("algorithm") != ALGORITHM:
-        raise ValueError(f"Algoritmo no soportado: {payload.get('algorithm')!r}")
+        raise ValueError(f"Unsupported algorithm: {payload.get('algorithm')!r}")
     raw_files = payload.get("files")
     if not isinstance(raw_files, list):
-        raise TypeError("'files' debe ser una lista")
+        raise TypeError("'files' must be a list")
 
     expected: dict[str, FileRecord] = {}
     for item in raw_files:
         record = FileRecord.from_dict(item)
         if record.path in expected:
-            raise ValueError(f"Ruta duplicada en el manifiesto: {record.path}")
+            raise ValueError(f"Duplicate path in the manifest: {record.path}")
         expected[record.path] = record
 
     extra: tuple[str, ...] = ()
@@ -276,11 +276,12 @@ def verify_manifest(root: str | Path, manifest: str | Path) -> IntegrityReport:
 
 
 def verify_signatures_bundle(path: str | Path, public_key_path: str | Path) -> bool:
-    """Verifica la firma Ed25519 separada de un paquete de firmas.
+    """Verifies the separate Ed25519 signature of a signature package.
 
-    Se busca primero ``<path>.sig`` (convención de ``sentinel.updates``) y,
-    como alternativa, ``path.with_suffix('.sig')``. Devuelve ``False`` si
-    faltan el paquete, la firma o la clave, o si la firma no coincide.
+    It first looks for ``<path>.sig`` (the ``sentinel.updates`` convention) and,
+    as an alternative, ``path.with_suffix('.sig')``. Returns ``False`` if the
+    package, the signature, or the key is missing, or if the signature does not
+    match.
     """
     bundle = Path(path)
     key = Path(public_key_path)
@@ -297,7 +298,7 @@ def verify_signatures_bundle(path: str | Path, public_key_path: str | Path) -> b
             return False
         return crypto.verify_payload(bundle.read_bytes(), signature.read_bytes(), key)
     except (OSError, ValueError, TypeError, RuntimeError):
-        # Incluye SigningUnavailable (RuntimeError) y claves o firmas corruptas.
+        # Includes SigningUnavailable (RuntimeError) and corrupt keys or signatures.
         return False
 
 

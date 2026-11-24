@@ -1,9 +1,9 @@
-"""Benchmark reproducible del escáner de Sentinel.
+"""Reproducible benchmark for the Sentinel scanner.
 
-Genera un árbol temporal con archivos de tamaño mixto, mide el escaneo
-secuencial y paralelo y guarda un JSON con los resultados.
+Generates a temporary tree of mixed-size files, measures sequential and
+parallel scanning, and saves a JSON file with the results.
 
-Uso típico desde la raíz del proyecto::
+Typical usage from the project root::
 
     python tools/benchmark.py --files 2000 --output docs/benchmark-results.json
 """
@@ -24,10 +24,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sentinel.engine.signatures import SignatureDatabase
 
-# Al ejecutar ``python tools/benchmark.py`` el directorio ``tools/`` encabeza
-# sys.path; añadimos la raíz para que los imports de ``sentinel`` funcionen
-# aunque el paquete no esté instalado en modo editable. Los imports reales se
-# hacen dentro de las funciones, después de este ajuste.
+# When running ``python tools/benchmark.py``, ``tools/`` is first on
+# sys.path; add the root so ``sentinel`` imports work even if the package
+# is not installed in editable mode. Actual imports happen inside the
+# functions, after this adjustment.
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -43,13 +43,13 @@ MARKER_EVERY = 50
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Valida y devuelve los argumentos de línea de comandos."""
-    parser = argparse.ArgumentParser(description="Mide el rendimiento del escáner de Sentinel.")
+    """Validate and return the command-line arguments."""
+    parser = argparse.ArgumentParser(description="Measure the performance of the Sentinel scanner.")
     parser.add_argument(
         "--files",
         type=int,
         default=DEFAULT_FILES,
-        help=f"Número de archivos a generar (por defecto: {DEFAULT_FILES}).",
+        help=f"Number of files to generate (default: {DEFAULT_FILES}).",
     )
     parser.add_argument(
         "--jobs",
@@ -57,35 +57,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         nargs="+",
         default=list(DEFAULT_JOBS),
         metavar="N",
-        help="Números de hilos a probar (por defecto: 1 2 4 8).",
+        help="Thread counts to test (default: 1 2 4 8).",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=ROOT / "docs" / "benchmark-results.json",
-        help="Ruta del JSON de resultados.",
+        help="Path to the results JSON.",
     )
     parser.add_argument(
         "--keep",
         action="store_true",
-        help="Conserva el árbol temporal (se imprime su ruta).",
+        help="Keep the temporary tree (its path is printed).",
     )
     args = parser.parse_args(argv)
 
     if args.files <= 0:
-        parser.error("--files debe ser un entero positivo")
+        parser.error("--files must be a positive integer")
     if not args.jobs or any(jobs < 1 or jobs > 64 for jobs in args.jobs):
-        parser.error("--jobs debe contener valores entre 1 y 64")
+        parser.error("--jobs must contain values between 1 and 64")
     return args
 
 
 def generate_tree(root: Path, count: int, rng: random.Random) -> tuple[int, int]:
-    """Crea ``count`` archivos repartidos en subdirectorios.
+    """Create ``count`` files spread across subdirectories.
 
-    Devuelve el total de bytes escritos y cuántos archivos llevan el marcador
-    de prueba reconocido por la base de firmas real.
+    Return the total number of bytes written and how many files contain the
+    test marker recognized by the real signature database.
     """
-    directories = [root / f"lote_{index:02d}" for index in range(SUBDIRS)]
+    directories = [root / f"batch_{index:02d}" for index in range(SUBDIRS)]
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -97,14 +97,14 @@ def generate_tree(root: Path, count: int, rng: random.Random) -> tuple[int, int]
         if index % MARKER_EVERY == 0:
             data[: len(MARKER)] = MARKER
             marked += 1
-        path = directories[index % SUBDIRS] / f"archivo_{index:06d}.bin"
+        path = directories[index % SUBDIRS] / f"file_{index:06d}.bin"
         path.write_bytes(data)
         total_bytes += size
     return total_bytes, marked
 
 
 def run_once(database: SignatureDatabase, tree: Path, jobs: int) -> dict[str, Any]:
-    """Ejecuta un escaneo completo y devuelve sus métricas."""
+    """Run a full scan and return its metrics."""
     from sentinel.config import ScanConfig
     from sentinel.engine.scanner import Scanner
 
@@ -129,11 +129,11 @@ def run_once(database: SignatureDatabase, tree: Path, jobs: int) -> dict[str, An
 
 
 def print_table(results: list[dict[str, Any]], total_bytes: int) -> None:
-    """Imprime una tabla comparativa legible en español."""
-    print(f"\nResultados: {len(results)} configuraciones sobre {total_bytes / 1048576:.1f} MiB\n")
+    """Print a readable comparison table."""
+    print(f"\nResults: {len(results)} configurations over {total_bytes / 1048576:.1f} MiB\n")
     header = (
-        f"{'hilos':>5} | {'tiempo (s)':>10} | {'MB/s':>8} | {'archivos/s':>11} "
-        f"| {'hallazgos':>9} | {'vs 1 hilo':>9}"
+        f"{'jobs':>5} | {'time (s)':>10} | {'MB/s':>8} | {'files/s':>11} "
+        f"| {'findings':>9} | {'speedup':>9}"
     )
     print(header)
     print("-" * len(header))
@@ -147,7 +147,7 @@ def print_table(results: list[dict[str, Any]], total_bytes: int) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Punto de entrada del script; devuelve el código de salida."""
+    """Script entry point; return the exit code."""
     from sentinel.engine.signatures import SignatureDatabase
 
     args = parse_args(argv)
@@ -162,13 +162,13 @@ def main(argv: list[str] | None = None) -> int:
         tree = Path(temporary.name)
 
     try:
-        print(f"Generando {args.files} archivos en {tree} ...")
+        print(f"Generating {args.files} files in {tree} ...")
         total_bytes, marked = generate_tree(tree, args.files, rng)
-        print(f"Árbol listo: {marked} archivos con marcador, {total_bytes / 1048576:.1f} MiB.")
+        print(f"Tree ready: {marked} files with the marker, {total_bytes / 1048576:.1f} MiB.")
 
         results: list[dict[str, Any]] = []
         for jobs in args.jobs:
-            print(f"Escaneando con {jobs} hilo(s) ...", flush=True)
+            print(f"Scanning with {jobs} thread(s) ...", flush=True)
             results.append(run_once(database, tree, jobs))
 
         payload: dict[str, Any] = {
@@ -187,14 +187,14 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         print_table(results, total_bytes)
-        print(f"\nResultados guardados en {args.output}")
+        print(f"\nResults saved to {args.output}")
         if args.keep:
-            print(f"Árbol conservado en {tree}")
+            print(f"Tree kept at {tree}")
         return 0
     except KeyboardInterrupt:
-        print("\nInterrumpido por el usuario; no se escribieron resultados.", file=sys.stderr)
+        print("\nInterrupted by the user; no results were written.", file=sys.stderr)
         if args.keep:
-            print(f"Árbol conservado en {tree}", file=sys.stderr)
+            print(f"Tree kept at {tree}", file=sys.stderr)
         return 130
     finally:
         if temporary is not None:

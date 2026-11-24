@@ -1,11 +1,11 @@
-"""Lista de exclusión para evitar falsos positivos y auto-detección.
+"""Allowlist to avoid false positives and self-detection.
 
-Formato de ``allowlist.json``::
+Format of ``allowlist.json``::
 
     {
       "version": 1,
       "paths": ["C:\\\\Tools\\\\known-good.exe"],
-      "directories": ["C:\\\\Program Files\\\\MiApp"],
+      "directories": ["C:\\\\Program Files\\\\MyApp"],
       "globs": ["C:\\\\Users\\\\*\\\\AppData\\\\Local\\\\Temp\\\\sentinel-*\\\\**"],
       "hashes": ["<sha256>"]
     }
@@ -23,7 +23,7 @@ from typing import Any
 
 
 def normalize_path(path: str | Path) -> str:
-    """Normaliza una ruta para comparaciones insensibles a mayúsculas."""
+    """Normalizes a path for case-insensitive comparisons."""
     candidate = Path(path)
     try:
         candidate = candidate.resolve()
@@ -34,7 +34,7 @@ def normalize_path(path: str | Path) -> str:
 
 @dataclass(frozen=True)
 class AllowList:
-    """Conjunto de reglas que eximen a un archivo del análisis."""
+    """Set of rules that exempt a file from analysis."""
 
     paths: frozenset[str] = frozenset()
     directories: frozenset[str] = frozenset()
@@ -45,15 +45,15 @@ class AllowList:
     @classmethod
     def from_dict(cls, payload: Any, source: str = "") -> AllowList:
         if not isinstance(payload, dict):
-            raise TypeError("La allowlist debe ser un objeto JSON")
+            raise TypeError("The allowlist must be a JSON object")
         version = payload.get("version", 1)
         if version != 1:
-            raise ValueError(f"Versión de allowlist no soportada: {version!r}")
+            raise ValueError(f"Unsupported allowlist version: {version!r}")
 
         def strings(key: str) -> frozenset[str]:
             values = payload.get(key, [])
             if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
-                raise ValueError(f"'{key}' debe ser una lista de cadenas")
+                raise ValueError(f"'{key}' must be a list of strings")
             return frozenset(item for item in values if item.strip())
 
         hashes = frozenset(item.lower().strip() for item in strings("hashes"))
@@ -70,7 +70,7 @@ class AllowList:
         candidate = Path(path)
         if not candidate.is_file():
             if required:
-                raise FileNotFoundError(f"Allowlist no encontrada: {candidate}")
+                raise FileNotFoundError(f"Allowlist not found: {candidate}")
             return cls()
         return cls.from_dict(
             json.loads(candidate.read_text(encoding="utf-8")), source=str(candidate)
@@ -91,7 +91,7 @@ class AllowList:
 
     @classmethod
     def for_self(cls, directories: Iterable[str | Path]) -> AllowList:
-        """Excluye los directorios propios de la aplicación."""
+        """Excludes the application's own directories."""
         return cls(
             directories=frozenset(normalize_path(item) for item in directories),
             sources=("auto:self-exclusion",),
@@ -99,7 +99,7 @@ class AllowList:
 
     @classmethod
     def for_files(cls, paths: Iterable[str | Path]) -> AllowList:
-        """Excluye archivos concretos (por ejemplo, el informe JSON)."""
+        """Excludes specific files (for example, the JSON report)."""
         return cls(
             paths=frozenset(normalize_path(item) for item in paths),
             sources=("auto:files",),

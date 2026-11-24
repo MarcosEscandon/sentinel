@@ -1,222 +1,220 @@
 # Sentinel
 
-Motor de escaneo de malware modular para Windows, escrito en Python. Cubre la
-parte central de un producto tipo Malwarebytes: **firmas SHA-256**, reglas de
-nombre y contenido, **heurística** (entropía, doble extensión, imports PE),
-**análisis de macros VBA** (MS-OVBA), **YARA opcional**, **cuarentena
-reversible**, **historial SQLite**, **informes JSON**, **protección en tiempo
-real**, **servicio de Windows**, **GUI**, **auditoría de seguridad** y
-**anti-tamper** de manifiestos.
+Modular malware scanning engine for Windows, written in Python. It covers the
+core of a Malwarebytes-like product: **SHA-256 signatures**, name and content
+rules, **heuristics** (entropy, double extension, PE imports), **VBA macro
+analysis** (MS-OVBA), **optional YARA**, **reversible quarantine**,
+**SQLite history**, **JSON reports**, **real-time protection**, **Windows
+service**, **GUI**, **security auditing** and **manifest anti-tamper**.
 
-> No es un reemplazo de un antivirus comercial. La base incluida contiene un
-> **IOC real e inofensivo** (EICAR), diez hashes reales de campañas públicas
-> (Dark Caracal, Sofacy y Tick, curados de `Neo23x0/signature-base`) y
-> marcadores sintéticos para probar el flujo completo sin manipular malware.
+> This is not a replacement for a commercial antivirus. The included database
+> contains a **real, harmless IOC** (EICAR), ten real hashes from public
+> campaigns (Dark Caracal, Sofacy and Tick, curated from `Neo23x0/signature-base`)
+> and synthetic markers to test the full workflow without handling malware.
 
-## Probar con un IOC real
+## Try it with a real IOC
 
-EICAR es el fichero de prueba estándar de la industria: cualquier antivirus
-debe detectarlo y es completamente inofensivo.
+EICAR is the industry-standard test file: every antivirus must detect it and it
+is completely harmless.
 
 ```powershell
 sentinel scan sentinel\data\iocs\eicar.com
 ```
 
-Debe aparecer `EICAR-HASH` y `EICAR-CONTENT`. El mismo indicador está en
-`sentinel/data/iocs/eicar.csv`, listo para el convertidor de feeds. En
-`sentinel/data/iocs/curated.csv` están los hashes reales con su campaña de
-origen; ambos se pueden importar con `sentinel feeds import`.
+`EICAR-HASH` and `EICAR-CONTENT` should appear. The same indicator is in
+`sentinel/data/iocs/eicar.csv`, ready for the feed converter.
+`sentinel/data/iocs/curated.csv` contains the real hashes with their source
+campaign; both can be imported with `sentinel feeds import`.
 
-## Instalación
+## Installation
 
 ```powershell
 cd C:\Users\marco\Mine\sentinel
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev,signing,hardening,realtime]"  # tests, Ed25519, regex, watchdog
-pip install -e ".[yara]"                           # opcional: reglas YARA
-pip install -e ".[service]"                        # opcional: servicio de Windows
+pip install -e ".[yara]"                           # optional: YARA rules
+pip install -e ".[service]"                        # optional: Windows service
 ```
 
-`signing` (`cryptography`) es obligatorio para verificar la firma Ed25519 en
-actualizaciones. `hardening` añade un límite de tiempo a las reglas de contenido,
-pero no es requisito de `sentinel signatures update`. Sin `regex`, las reglas de
-contenido funcionan pero no tienen límite de tiempo.
-Sin `watchdog`, la monitorización usa el backend nativo de Windows
-(`ReadDirectoryChangesW` vía `ctypes`) y, si ese tampoco está disponible,
-sondeo (`polling`) sin dependencias.
+`signing` (`cryptography`) is required to verify the Ed25519 signature on
+updates. `hardening` adds a timeout to content rules, but is not a requirement
+for `sentinel signatures update`. Without `regex`, content rules work but have
+no timeout. Without `watchdog`, monitoring uses the native Windows backend
+(`ReadDirectoryChangesW` via `ctypes`) and, if that is also unavailable,
+dependency-free polling.
 
-## Uso rápido
+## Quick start
 
 ```powershell
-# Verificar que los detectores funcionan
+# Verify that the detectors work
 sentinel selftest
 
-# Escanear una carpeta (informe legible + guardado en JSON)
-sentinel scan C:\Users\marco\Downloads --json informe.json
+# Scan a folder (human-readable report + saved as JSON)
+sentinel scan C:\Users\marco\Downloads --json report.json
 
-# Escaneo paralelo sin descomprimir contenedores
-sentinel scan D:\datos --jobs 8 --no-containers
+# Parallel scan without unpacking containers
+sentinel scan D:\data --jobs 8 --no-containers
 
-# Solo los archivos sospechosos van a cuarentena, sin preguntar
-sentinel scan C:\Users\marco\Descargas --quarantine-found --yes
+# Only suspicious files go to quarantine, without prompting
+sentinel scan C:\Users\marco\Downloads --quarantine-found --yes
 
-# Allowlist adicional (los archivos propios se excluyen solos)
+# Additional allowlist (the product's own files are excluded automatically)
 sentinel scan C:\Users\marco\Downloads --allowlist allowlist.json
 
-# Gestionar cuarentena (verify detecta manipulaciones)
+# Manage quarantine (verify detects tampering)
 sentinel quarantine list
 sentinel quarantine verify
 sentinel quarantine restore <id>
 sentinel quarantine delete <id>
 
-# Historial y firmas
+# History and signatures
 sentinel history --limit 10
 sentinel signatures info
 sentinel signatures validate
 
-# Autoevaluación de seguridad y cadena de suministro
-sentinel audit                          # 10 checks; 0 OK, 2 si hay fallos
+# Security self-assessment and supply chain
+sentinel audit                          # 10 checks; 0 OK, 2 on failures
 sentinel integrity build . --output build/manifest.json
 sentinel integrity verify . --manifest build/manifest.json --public-key public.pem
 
-# Análisis de macros (además de OFFICE-MACRO, reglas VBA-* sobre el código)
-sentinel scan C:\Descargas\informe.docm
+# Macro analysis (in addition to OFFICE-MACRO, VBA-* rules on the code)
+sentinel scan C:\Downloads\report.docm
 ```
 
-### Actualización firmada
+### Signed updates
 
 ```powershell
-# 1. Generar claves una sola vez (la privada NO se distribuye)
-sentinel keys generate --private C:\seguro\private.pem --public public.pem
+# 1. Generate keys once (the private key is NOT distributed)
+sentinel keys generate --private C:\secure\private.pem --public public.pem
 
-# 2. Firmar el paquete de firmas publicado
-sentinel signatures --signatures signatures.json sign --key C:\seguro\private.pem --output signatures.json.sig
+# 2. Sign the published signature package
+sentinel signatures --signatures signatures.json sign --key C:\secure\private.pem --output signatures.json.sig
 
-# 3. En cada cliente: descarga, verifica firma, valida esquema y rechaza rollback
-sentinel signatures update --url https://ejemplo.local/signatures.json --public-key public.pem
+# 3. On each client: download, verify the signature, validate the schema and reject rollback
+sentinel signatures update --url https://example.local/signatures.json --public-key public.pem
 ```
 
-La opción `--sha256` es adicional; la firma Ed25519 y la clave pública son
-obligatorias. El cliente rechaza cualquier revisión menor o igual a la
-instalada. El JSON debe incluir `"revision": <entero>`.
+The `--sha256` option is additional; the Ed25519 signature and public key are
+mandatory. The client rejects any revision lower than or equal to the installed
+one. The JSON must include `"revision": <integer>`.
 
-### Contenedores, feeds y auditoría
+### Containers, feeds and auditing
 
 ```powershell
-# ZIP/TAR/GZ/BZ2/XZ se descomprimen con límites anti-bomba (3 niveles por defecto)
-# Office/OOXML (docx, xlsx, ...) y OLE2 (doc, xls, ppt, msi, msg) también se analizan
-sentinel scan C:\Descargas
+# ZIP/TAR/GZ/BZ2/XZ are unpacked with anti-bomb limits (3 levels by default)
+# Office/OOXML (docx, xlsx, ...) and OLE2 (doc, xls, ppt, msi, msg) are also analyzed
+sentinel scan C:\Downloads
 
-# Un proyecto VBA incrustado se reporta como OFFICE-MACRO (MEDIUM); el código
-# descomprimido se analiza con reglas VBA-* (AutoOpen, Shell, PowerShell, etc.)
-sentinel scan C:\Descargas\informe.docm
+# An embedded VBA project is reported as OFFICE-MACRO (MEDIUM); the unpacked code
+# is analyzed with VBA-* rules (AutoOpen, Shell, PowerShell, etc.)
+sentinel scan C:\Downloads\report.docm
 
-# Importar IOCs de un CSV, JSON, MISP o lista de hashes
-sentinel --signatures C:\ProgramData\sentinel\signatures.json feeds import C:\feeds\proveedor.csv --source proveedor
+# Import IOCs from a CSV, JSON, MISP or hash list
+sentinel --signatures C:\ProgramData\sentinel\signatures.json feeds import C:\feeds\vendor.csv --source vendor
 sentinel --signatures C:\ProgramData\sentinel\signatures.json feeds import C:\feeds\misp.json --format misp --dry-run
 
-# Registro de auditoría en JSONL (por defecto <home>/audit.jsonl)
-sentinel --log-file C:\logs\sentinel.jsonl scan C:\Descargas
-sentinel --no-log scan C:\Descargas
+# JSONL audit log (by default <home>/audit.jsonl)
+sentinel --log-file C:\logs\sentinel.jsonl scan C:\Downloads
+sentinel --no-log scan C:\Downloads
 ```
 
-El importador incrementa `revision` y hace una copia `.bak` de la base
-anterior. La firma Ed25519 debe regenerarse después de importar IOCs.
+The importer increments `revision` and creates a `.bak` copy of the previous
+database. The Ed25519 signature must be regenerated after importing IOCs.
 
-### Protección en tiempo real e interfaz gráfica
+### Real-time protection and graphical interface
 
 ```powershell
-# Monitor en primer plano: prioriza native (Windows), después watchdog, después polling
-sentinel monitor C:\Descargas --poll-interval 2 --grace-period 0.5
+# Foreground monitor: prefers native (Windows), then watchdog, then polling
+sentinel monitor C:\Downloads --poll-interval 2 --grace-period 0.5
 
-# Avisos de escritorio: auto (toast si hay winotify, si no cuadro nativo), none para servicio
-sentinel monitor C:\Descargas --notify auto
+# Desktop notifications: auto (toast if winotify is available, otherwise a native dialog), none for service
+sentinel monitor C:\Downloads --notify auto
 
-# Interfaz gráfica (tkinter, incluido en Python para Windows)
+# Graphical interface (tkinter, included with Python for Windows)
 sentinel gui
-# o: sentinel-gui
+# or: sentinel-gui
 ```
 
-Los eventos `realtime.detection`, `realtime.quarantine` y `realtime.error` se
-escriben en el JSONL de auditoría. La acción de un hallazgo puede ser
-`quarantined`, `detected` o `error` (`clean` si no hay hallazgos). El monitor
-acepta `--backend native|watchdog|polling` para forzar el mecanismo de vigilancia
-(si no se especifica, se elige automáticamente). El backend nativo no SIGUE
-reparse points: vigila directorios con `ReadDirectoryChangesW` y, si se le indican
-archivos concretos, los vigila mediante sondeo (`polling`).
-Las notificaciones se lanzan en un hilo daemon para no bloquear el escaneo;
-`--notify none` es la opción recomendada al ejecutar como servicio.
+The `realtime.detection`, `realtime.quarantine` and `realtime.error` events are
+written to the JSONL audit log. A finding's action can be `quarantined`,
+`detected` or `error` (`clean` if there are no findings). The monitor accepts
+`--backend native|watchdog|polling` to force the monitoring mechanism (if not
+specified, it is selected automatically). The native backend does not FOLLOW
+reparse points: it watches directories with `ReadDirectoryChangesW` and, if
+given specific files, watches them by polling. Notifications run in a daemon
+thread so that they do not block the scan; `--notify none` is the recommended
+option when running as a service.
 
-Para instalar el servicio de Windows (requiere administrador):
+To install the Windows service (requires administrator):
 
 ```powershell
-sentinel --home C:\ProgramData\sentinel service install --paths C:\Descargas --startup auto
+sentinel --home C:\ProgramData\sentinel service install --paths C:\Downloads --startup auto
 sentinel service status
 sentinel service start
 sentinel service stop
 sentinel service remove
 ```
 
-La configuración del servicio se guarda en `<home>/service.json` y el home
-elegido se persiste en `%ProgramData%\sentinel\service_home.txt` para que
-`LocalSystem` pueda leerlo. El directorio vigilado **no debe estar dentro del
-home**, porque la auto-exclusión lo ignoraría. Para depurar sin instalar nada:
+The service configuration is saved in `<home>/service.json` and the chosen home
+is persisted in `%ProgramData%\sentinel\service_home.txt` so that `LocalSystem`
+can read it. The monitored directory **must not be inside** the home, because
+self-exclusion would ignore it. To debug without installing anything:
 `sentinel service run`.
 
-Códigos de salida: `0` limpio, `1` hay hallazgos, `2` error operativo. Útil
-para integrar en scripts o tareas programadas. Las opciones globales
-(`--home`, `--signatures`, `--config-file`, `--log-file`, `--no-log`) se
-aceptan antes o después del subcomando.
+Exit codes: `0` clean, `1` findings present, `2` operational error. Useful for
+integration into scripts or scheduled tasks. The global options (`--home`,
+`--signatures`, `--config-file`, `--log-file`, `--no-log`) are accepted before or
+after the subcommand.
 
-Para ajustar umbrales y exclusiones, copia `config.example.json` y pásalo con
+To adjust thresholds and exclusions, copy `config.example.json` and pass it with
 `--config-file`.
 
-## Estructura
+## Structure
 
 ```
 sentinel/
 ├── sentinel/
-│   ├── cli.py               # subcomandos y presentación
+│   ├── cli.py               # subcommands and presentation
 │   ├── config.py            # ScanConfig
-│   ├── crypto.py            # claves Ed25519 y verificación
-│   ├── feeds.py             # conversor de IOCs (CSV/JSON/MISP/hashes)
-│   ├── realtime.py          # monitor native/watchdog/polling
-│   ├── notify.py            # avisos toast/cuadro nativo
-│   ├── audit.py             # autoevaluación de seguridad (10 checks)
-│   ├── integrity.py         # manifiestos SHA-256 y firma de paquetes
-│   ├── service.py           # servicio de Windows
-│   ├── gui.py               # interfaz tkinter
-│   ├── updates.py           # descarga verificada y atómica de firmas
+│   ├── crypto.py            # Ed25519 keys and verification
+│   ├── feeds.py             # IOC converter (CSV/JSON/MISP/hashes)
+│   ├── realtime.py          # native/watchdog/polling monitor
+│   ├── notify.py            # toast/native dialog notifications
+│   ├── audit.py             # security self-assessment (10 checks)
+│   ├── integrity.py         # SHA-256 manifests and package signing
+│   ├── service.py           # Windows service
+│   ├── gui.py               # tkinter interface
+│   ├── updates.py           # verified, atomic signature updates
 │   ├── data/
 │   │   ├── signatures.json
-│   │   ├── signatures.json.sig   # firma Ed25519 de la base
-│   │   ├── signatures.json.pub   # clave pública de distribución
+│   │   ├── signatures.json.sig   # Ed25519 signature of the database
+│   │   ├── signatures.json.pub   # distribution public key
 │   │   ├── yara/sample.yar
-│   │   └── iocs/                 # eicar.{com,csv} y curated.csv
+│   │   └── iocs/                 # eicar.{com,csv} and curated.csv
 │   ├── core/
-│   │   ├── allowlist.py     # exclusiones y auto-exclusión
-│   │   ├── logging.py       # auditoría JSONL
+│   │   ├── allowlist.py     # exclusions and self-exclusion
+│   │   ├── logging.py       # JSONL audit logging
 │   │   ├── models.py        # Finding, ScanResult, RuleHit, Severity
-│   │   ├── quarantine.py    # cuarentena con hash + MAC
-│   │   └── database.py      # historial en SQLite
+│   │   ├── quarantine.py    # quarantine with hash + MAC
+│   │   └── database.py      # SQLite history
 │   └── engine/
-│       ├── signatures.py    # validación y matching de firmas
-│       ├── heuristics.py    # entropía, doble extensión, parser PE
-│       ├── containers.py    # ZIP/TAR/GZ/BZ2/XZ/OOXML con límites
-│       ├── ole.py           # parser CFB/OLE2 para doc/xls/ppt/msi/msg
-│       ├── vba.py           # descompresión MS-OVBA y reglas VBA-*
-│       ├── scanner.py       # recorrido, hashing, paralelo y orquestación
-│       └── yara.py          # integración opcional con yara-python
-├── packaging/               # spec de PyInstaller, build.ps1 y get-signtool.ps1
-├── tools/benchmark.py       # benchmarks de archivos/s y MB/s con --jobs
-├── docs/                    # THREAT_MODEL.md, PERFORMANCE.md y resultados
+│       ├── signatures.py    # signature validation and matching
+│       ├── heuristics.py    # entropy, double extension, PE parser
+│       ├── containers.py    # ZIP/TAR/GZ/BZ2/XZ/OOXML with limits
+│       ├── ole.py           # CFB/OLE2 parser for doc/xls/ppt/msi/msg
+│       ├── vba.py           # MS-OVBA decompression and VBA-* rules
+│       ├── scanner.py       # traversal, hashing, parallelism and orchestration
+│       └── yara.py          # optional yara-python integration
+├── packaging/               # PyInstaller spec, build.ps1 and get-signtool.ps1
+├── tools/benchmark.py       # files/s and MB/s benchmarks with --jobs
+├── docs/                    # THREAT_MODEL.md, PERFORMANCE.md and results
 └── tests/
 ```
 
-## Ampliar las firmas
+## Extending the signatures
 
-`signatures.json` admite tres bloques:
+`signatures.json` supports three blocks:
 
 ```json
 {
@@ -230,138 +228,135 @@ sentinel/
     {"id": "FN-0001", "pattern": "\\.js\\.vbs$", "severity": "medium", "description": "..."}
   ],
   "content": [
-    {"id": "CT-0001", "pattern": "marcador", "severity": "low", "description": "...", "max_size": 1048576}
+    {"id": "CT-0001", "pattern": "marker", "severity": "low", "description": "...", "max_size": 1048576}
   ]
 }
 ```
 
-Los patrones de `filenames` y `content` son expresiones regulares sobre bytes y
-se compilan con `IGNORECASE`. `max_size` evita evaluar archivos grandes. Con
-`hardening` instalado, cada regla tiene un límite de 100 ms; una regla que lo
-supere se omite y se reporta como `RULE-TIMEOUT`.
+The `filenames` and `content` patterns are regular expressions over bytes and
+are compiled with `IGNORECASE`. `max_size` avoids evaluating large files. With
+`hardening` installed, each rule has a 100 ms limit; a rule that exceeds it is
+skipped and reported as `RULE-TIMEOUT`.
 
-## Puntos de extensión
+## Extension points
 
-* **Nuevos detectores**: añade un módulo en `engine/` que devuelva `RuleHit` y
-  llámalo desde `Scanner._detect`.
-* **Otras fuentes de IOC**: añade un parser en `feeds.py` y regístralo en
-  `PARSERS`. Copia `allowlist.example.json` para excluir binaries conocidos
-  como buenos.
-* **Interfaz gráfica**: `sentinel gui` usa `SentinelGUI`; también es integrable
-  desde código con `SentinelGUI(headless=True)` para usar `scan_path()`,
-  `format_summary()` y `refresh_quarantine()` sin ventana.
-* **Protección en tiempo real**: `RealtimeMonitor` expone `process_path()` y
-  `on_finding`; el servicio de Windows reutiliza esa misma implementación.
-  Antes de desplegarlo, prueba bien las exclusiones en un entorno aislado.
+* **New detectors**: add a module in `engine/` that returns `RuleHit` and call
+  it from `Scanner._detect`.
+* **Other IOC sources**: add a parser in `feeds.py` and register it in
+  `PARSERS`. Copy `allowlist.example.json` to exclude known-good binaries.
+* **Graphical interface**: `sentinel gui` uses `SentinelGUI`; it can also be
+  integrated from code with `SentinelGUI(headless=True)` to use `scan_path()`,
+  `format_summary()` and `refresh_quarantine()` without a window.
+* **Real-time protection**: `RealtimeMonitor` exposes `process_path()` and
+  `on_finding`; the Windows service reuses that same implementation. Before
+  deploying it, test the exclusions thoroughly in an isolated environment.
 
-## Seguridad y límites
+## Security and limits
 
-* La heurística **prioriza**, no condena: un `HEUR-*` debe revisarse antes de
-  borrar nada. Las firmas exactas son la única señal determinista.
-* `--quarantine-found` mueve archivos; la ruta original queda registrada y se
-  puede restaurar con `sentinel quarantine restore <id>`.
-* No se analizan reparse points/junctions por defecto para evitar bucles.
-* Tamaño máximo por archivo: 128 MiB (configurable con `--max-size`).
-* La cuarentena guarda el SHA-256 real y un HMAC del índice con una clave fuera
-  del directorio de cuarentena; `restore` rechaza entradas manipuladas.
-* Para producción: usa actualizaciones firmadas con `--public-key`, firma también
-  el paquete de IOCs importados, ejecuta con un usuario sin privilegios y revisa
-  la allowlist antes de desplegar.
-* La firma Authenticode del ejecutable (ver `packaging/README.md`) **no**
-  sustituye a la verificación Ed25519 de las firmas.
-* La base incluye EICAR y diez hashes reales de fuentes públicas; no es una
-  base de firmas comercial. Amplía con fuentes fiables y firma cada revisión.
-* El análisis de Office/MSI extrae streams, detecta proyectos VBA y descomprime
-  el código MS-OVBA para aplicar reglas `VBA-*`. No evalúa código ni desofusca
-  estrategias arbitrarias: los hallazgos son señales de revisión.
-* Todavía queda fuera de alcance el filtro de sistema de archivos a nivel de
-  kernel: el monitor actual es de usuario y puede perder eventos si el buffer
-  de 64 KiB se desborda (se registra `realtime.error`).
+* Heuristics **prioritize, they do not convict**: a `HEUR-*` finding must be
+  reviewed before deleting anything. Exact signatures are the only
+  deterministic signal.
+* `--quarantine-found` moves files; the original path is recorded and can be
+  restored with `sentinel quarantine restore <id>`.
+* Reparse points/junctions are not analyzed by default to avoid loops.
+* Maximum size per file: 128 MiB (configurable with `--max-size`).
+* Quarantine stores the real SHA-256 and an HMAC of the index with a key outside
+  the quarantine directory; `restore` rejects tampered entries.
+* For production: use signed updates with `--public-key`, also sign the
+  imported IOC package, run as an unprivileged user and review the allowlist
+  before deployment.
+* The executable's Authenticode signature (see `packaging/README.md`) **does
+  not** replace Ed25519 verification of the signatures.
+* The included database contains EICAR and ten real hashes from public sources;
+  it is not a commercial signature database. Extend it with trusted sources and
+  sign every revision.
+* Office/MSI analysis extracts streams, detects VBA projects and decompresses
+  MS-OVBA code to apply `VBA-*` rules. It does not evaluate code or deobfuscate
+  arbitrary strategies: findings are signals for review.
+* A kernel-level file system filter is still out of scope: the current monitor
+  runs in user mode and may lose events if the 64 KiB buffer overflows
+  (`realtime.error` is logged).
 
-## Auditoría, anti-tamper y rendimiento
+## Auditing, anti-tamper and performance
 
-`sentinel audit` ejecuta 10 comprobaciones reales (firma y rollback de bases,
-integridad de cuarentena, logging, allowlist, backend de tiempo real, límites de
-configuración, ubicación de `home` e IOCs mínimos). Devuelve `0` si todo pasa y
-`2` si hay fallos; con la base incluida, firmada y con su clave pública, el
-resultado es **100/100**. El detalle y las remediations están en
-`docs/THREAT_MODEL.md`; el alcance para una revisión independiente está en
-`docs/EXTERNAL_AUDIT_SCOPE.md`.
+`sentinel audit` runs 10 real checks (database signature and rollback,
+quarantine integrity, logging, allowlist, real-time backend, configuration
+limits, `home` location and minimum IOCs). It returns `0` if all pass and `2` if
+there are failures; with the included, signed database and its public key, the
+result is **100/100**. Details and remediations are in `docs/THREAT_MODEL.md`;
+the scope for an independent review is in `docs/EXTERNAL_AUDIT_SCOPE.md`.
 
-`sentinel integrity build/verify` genera y comprueba un manifiesto SHA-256.
-`verify` distingue `missing`, `modified` y `added`, y con `--public-key`
-valida también la firma Ed25519 del manifiesto. El análisis estático con
-`python -m bandit -r sentinel -x tests` terminó con **0 avisos** (6026 líneas
-analizadas; detalle en `docs/bandit-results.json`) y el análisis de
-dependencias con `pip-audit` sobre los extras declarados encontró **0
-vulnerabilidades** en 24 paquetes (`docs/pip-audit-results.json`). El build de
-PyInstaller genera y empaqueta `manifest.json` (y su firma si se define
-`SENTINEL_PRIVATE_KEY`)
-dentro de `sentinel/data`. En un build onedir (`-OneFile:$false`) se puede
-verificar con:
+`sentinel integrity build/verify` generates and checks a SHA-256 manifest.
+`verify` distinguishes `missing`, `modified` and `added`, and with `--public-key`
+it also validates the manifest's Ed25519 signature. Static analysis with
+`python -m bandit -r sentinel -x tests` finished with **0 warnings** (6026 lines
+analyzed; details in `docs/bandit-results.json`) and dependency analysis with
+`pip-audit` over the declared extras found **0 vulnerabilities** in 24 packages
+(`docs/pip-audit-results.json`). The PyInstaller build generates and packages
+`manifest.json` (and its signature if `SENTINEL_PRIVATE_KEY` is set) inside
+`sentinel/data`. In an onedir build (`-OneFile:$false`) it can be verified with:
 
 ```powershell
 sentinel integrity verify _internal\sentinel\data --manifest _internal\sentinel\data\manifest.json --public-key _internal\sentinel\data\signatures.json.pub
 ```
 
-En el build onefile por defecto no existe `_internal`: los datos se extraen en
-una carpeta temporal `_MEIxxxxx` mientras el proceso está vivo. Para verificar
-el bundle onefile, usa la copia de `sentinel/data` del árbol de fuentes.
+In the default onefile build there is no `_internal`: data is extracted to a
+temporary `_MEIxxxxx` folder while the process is alive. To verify the onefile
+bundle, use the `sentinel/data` copy from the source tree.
 
-Rendimiento medido en este equipo (Python 3.10.11, Windows 10, 2000 archivos,
+Performance measured on this machine (Python 3.10.11, Windows 10, 2000 files,
 63 MiB, `python tools/benchmark.py --files 2000`):
 
-| `--jobs` | Tiempo (s) | MB/s | Archivos/s |
+| `--jobs` | Time (s) | MB/s | Files/s |
 | -------: | ---------: | ---: | ---------: |
 |        1 |      2,386 | 26,4 |        838 |
 |        2 |      2,243 | 28,1 |        892 |
 |        4 |      2,204 | 28,6 |        908 |
 |        8 |      2,215 | 28,5 |        903 |
 
-El óptimo medido es **4 hilos**; a 8 hilos el GIL anula la ganancia. Los 1948
-hallazgos son falsos positivos de heurística sobre datos aleatorios, no malware;
-el paralelismo no cambia el resultado. Datos completos en
-`docs/PERFORMANCE.md` y `docs/benchmark-results.json`.
+The measured optimum is **4 threads**; at 8 threads the GIL cancels out the
+gain. The 1948 findings are heuristic false positives on random data, not
+malware; parallelism does not change the result. Full data in
+`docs/PERFORMANCE.md` and `docs/benchmark-results.json`.
 
-## Estado de producción
+## Production status
 
-Es un **prototipo funcional, empaquetado y validado localmente**, no un producto
-production-ready completo. Quedan fuera de alcance o requieren infraestructura
-externa:
+This is a **functional prototype, packaged and validated locally**, not a
+complete production-ready product. The following are out of scope or require
+external infrastructure:
 
-* Filtro de sistema de archivos a nivel kernel: el monitor es de modo usuario y
-  puede perder eventos si se desborda el buffer de 64 KiB. La arquitectura
-  propuesta está en `docs/KERNEL_FILTER_DESIGN.md`; no incluye código de driver.
-* Auditoría externa independiente: `sentinel audit` es una autoevaluación. El
-  alcance propuesto está en `docs/EXTERNAL_AUDIT_SCOPE.md`.
-* Certificado Authenticode EV/OV: aquí solo se usó un certificado autofirmado
-  para validar el proceso. Confiándolo temporalmente solo al usuario se consiguió
-  `signtool verify /pa` con 0 errores; se retiró inmediatamente después. Sin esa
-  confianza el estado es `UnknownError` y SmartScreen requiere reputación. En
-  este equipo, además, **Device Guard bloqueó el exe recién compilado** por no
-  provenir de una CA de confianza; el build y su smoke test interno pasaron, pero
-  la validación final se hizo con la CLI de Python. Un certificado EV/OV real
-  debería resolver este bloqueo; el procedimiento de emisión, firma y confianza
-  está en `docs/EV_OV_HANDOFF.md`.
-* Instalación del servicio de Windows: necesita administrador (abre UAC). Se
-  validó `service run` en primer plano y, ya corregidos el home persistido y el
-  `StopEvent` de pywin32 312, que el servicio instalado llega a `Running`.
-* Base de firmas: EICAR, 10 hashes públicos y marcadores sintéticos; no sustituye
-  a una base comercial actualizada.
+* Kernel-level file system filter: the monitor runs in user mode and may lose
+  events if the 64 KiB buffer overflows. The proposed architecture is in
+  `docs/KERNEL_FILTER_DESIGN.md`; it includes no driver code.
+* Independent external audit: `sentinel audit` is a self-assessment. The
+  proposed scope is in `docs/EXTERNAL_AUDIT_SCOPE.md`.
+* EV/OV Authenticode certificate: only a self-signed certificate was used here
+  to validate the process. Temporarily trusting it for the current user alone
+  achieved `signtool verify /pa` with 0 errors; it was removed immediately
+  afterwards. Without that trust the status is `UnknownError` and SmartScreen
+  requires reputation. On this machine, in addition, **Device Guard blocked the
+  freshly built exe** because it did not come from a trusted CA; the build and
+  its internal smoke test passed, but final validation was done with the Python
+  CLI. A real EV/OV certificate should resolve this block; the issuance, signing
+  and trust procedure is in `docs/EV_OV_HANDOFF.md`.
+* Windows service installation: requires administrator (opens UAC). `service
+  run` in the foreground was validated and, with the persisted home and the
+  pywin32 312 `StopEvent` now fixed, the installed service reaches `Running`.
+* Signature database: EICAR, 10 public hashes and synthetic markers; it does not
+  replace an up-to-date commercial database.
 
-## Compilación (Windows x64)
+## Building (Windows x64)
 
 ```powershell
 pip install -e ".[packaging]"
-.\packaging\get-signtool.ps1          # opcional: signtool portable, sin admin
+.\packaging\get-signtool.ps1          # optional: portable signtool, no admin required
 .\packaging\build.ps1 -Console        # dist\sentinel.exe
-.\packaging\build.ps1 -Sign           # firma con signtool + timestamp
+.\packaging\build.ps1 -Sign           # sign with signtool + timestamp
 ```
 
-Con `SENTINEL_PRIVATE_KEY=<ruta.pem>` el build también firma el manifiesto de
-datos con Ed25519. Consulta `packaging/README.md` para certificados, opciones
-onedir/onefile y smoke tests. Herramientas de diagnóstico: `python -m pytest`,
-`python -m ruff check .`, `python -m bandit -r sentinel -x tests`,
-`sentinel selftest`, `sentinel audit` y `python tools/benchmark.py`. En
-`.github/workflows/ci.yml` esas comprobaciones se ejecutan en Windows, con un
-job de SCA separado en Python 3.11.
+With `SENTINEL_PRIVATE_KEY=<path.pem>` the build also signs the data manifest
+with Ed25519. See `packaging/README.md` for certificates, onedir/onefile options
+and smoke tests. Diagnostic tools: `python -m pytest`, `python -m ruff check .`,
+`python -m bandit -r sentinel -x tests`, `sentinel selftest`, `sentinel audit`
+and `python tools/benchmark.py`. In `.github/workflows/ci.yml` these checks run
+on Windows, with a separate SCA job on Python 3.11.

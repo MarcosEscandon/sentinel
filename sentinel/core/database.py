@@ -1,4 +1,4 @@
-"""Historial de escaneos en SQLite."""
+"""Scan history in SQLite."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_findings_path ON findings(path);
 
 
 class ScanDatabase:
-    """Persistencia ligera de informes; usa SQLite sin servicios externos."""
+    """Lightweight report persistence; uses SQLite with no external services."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -141,10 +141,10 @@ class ScanDatabase:
         return {"scans": scans, "findings": findings, "quarantined": quarantined}
 
     def mark_quarantined(self, paths: list[str], scan_id: int | None = None) -> int:
-        """Marca los hallazgos cuyo archivo se envió a cuarentena."""
+        """Marks findings whose file was sent to quarantine."""
         if not paths:
             return 0
-        # SQL estático: los valores siempre van como parámetros enlazados.
+        # Static SQL: values are always passed as bound parameters.
         if scan_id is None:
             query = "UPDATE findings SET quarantined = 1 WHERE path = ?"
             params_list = [(path,) for path in paths]

@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Descarga un signtool.exe portable desde el paquete NuGet oficial de
-    Microsoft Windows SDK Build Tools. No requiere administrador ni instalar
-    el SDK completo.
+    Downloads a portable signtool.exe from the official Microsoft Windows SDK
+    Build Tools NuGet package. Requires neither administrator privileges nor
+    installation of the full SDK.
 
 .DESCRIPTION
-    Guarda el binario en packaging\tools\signtool.exe. build.ps1 lo detecta
-    automáticamente. Esta herramienta solo firma: para producción necesitas
-    además un certificado EV/OV de firma de código.
+    Saves the binary to packaging\tools\signtool.exe. build.ps1 detects it
+    automatically. This tool only signs: for production you also need an EV/OV
+    code-signing certificate.
 
 .EXAMPLE
     .\packaging\get-signtool.ps1
@@ -20,26 +20,26 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$paquete = "microsoft.windows.sdk.buildtools.$Version"
-$url = "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/$Version/$paquete.nupkg"
-$destino = Join-Path $PSScriptRoot 'tools'
-$zipTemporal = Join-Path $env:TEMP "$paquete.zip"
-$extraido = Join-Path $env:TEMP "sentinel-sdk-$Version"
+$package = "microsoft.windows.sdk.buildtools.$Version"
+$url = "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/$Version/$package.nupkg"
+$destination = Join-Path $PSScriptRoot 'tools'
+$zipTemp = Join-Path $env:TEMP "$package.zip"
+$extracted = Join-Path $env:TEMP "sentinel-sdk-$Version"
 
-Write-Host "Descargando $paquete desde NuGet..."
-Invoke-WebRequest -Uri $url -OutFile $zipTemporal -UseBasicParsing
+Write-Host "Downloading $package from NuGet..."
+Invoke-WebRequest -Uri $url -OutFile $zipTemp -UseBasicParsing
 
-Remove-Item -LiteralPath $extraido -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath $zipTemporal -DestinationPath $extraido -Force
+Remove-Item -LiteralPath $extracted -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath $zipTemp -DestinationPath $extracted -Force
 
-$origen = Get-ChildItem -LiteralPath $extraido -Recurse -Filter 'signtool.exe' |
+$source = Get-ChildItem -LiteralPath $extracted -Recurse -Filter 'signtool.exe' |
     Where-Object FullName -like '*\x64\signtool.exe' |
     Select-Object -First 1
-if (-not $origen) {
-    throw 'No se encontró signtool.exe x64 dentro del paquete NuGet.'
+if (-not $source) {
+    throw 'x64 signtool.exe not found inside the NuGet package.'
 }
 
-New-Item -ItemType Directory -Force -Path $destino | Out-Null
-Copy-Item -LiteralPath $origen.FullName -Destination (Join-Path $destino 'signtool.exe') -Force
-Write-Host "signtool.exe listo en: $(Join-Path $destino 'signtool.exe')"
-Write-Host 'Recuerda definir SENTINEL_CERT_THUMBPRINT o SENTINEL_CERT_SUBJECT antes de firmar.'
+New-Item -ItemType Directory -Force -Path $destination | Out-Null
+Copy-Item -LiteralPath $source.FullName -Destination (Join-Path $destination 'signtool.exe') -Force
+Write-Host "signtool.exe ready at: $(Join-Path $destination 'signtool.exe')"
+Write-Host 'Remember to set SENTINEL_CERT_THUMBPRINT or SENTINEL_CERT_SUBJECT before signing.'

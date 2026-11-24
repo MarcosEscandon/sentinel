@@ -27,7 +27,7 @@ def test_cli_scan_writes_audit_and_excludes_report(tmp_path, capsys):
     assert any(item["event"] == "finding" and item["rule_id"] == "TEST-CONTENT-MARKER" for item in events)
 
     second = main([*_common(home), "scan", str(target), "--quiet"])
-    assert second == 1  # el marcador sigue ahí; el informe ya no se analiza
+    assert second == 1  # the marker is still there; the report is no longer scanned
     excluded = json.loads((home / "audit.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert excluded["event"] == "scan.finish"
     assert excluded["files_scanned"] == 1
@@ -37,7 +37,7 @@ def test_cli_scan_writes_audit_and_excludes_report(tmp_path, capsys):
 def test_cli_custom_log_file(tmp_path, capsys):
     home = tmp_path / "home"
     log = tmp_path / "custom.jsonl"
-    (tmp_path / "clean.txt").write_text("nada", encoding="utf-8")
+    (tmp_path / "clean.txt").write_text("nothing", encoding="utf-8")
     code = main(
         [*_common(home), "--log-file", str(log), "scan", str(tmp_path / "clean.txt"), "--quiet"]
     )
@@ -49,7 +49,7 @@ def test_cli_custom_log_file(tmp_path, capsys):
 
 def test_cli_no_log(tmp_path, capsys):
     home = tmp_path / "home"
-    (tmp_path / "clean.txt").write_text("nada", encoding="utf-8")
+    (tmp_path / "clean.txt").write_text("nothing", encoding="utf-8")
     code = main(
         [*_common(home), "--no-log", "scan", str(tmp_path / "clean.txt"), "--quiet"]
     )

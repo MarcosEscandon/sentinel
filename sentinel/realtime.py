@@ -1,11 +1,11 @@
-"""Monitorización en tiempo real de archivos nuevos o modificados.
+"""Real-time monitoring of new or modified files.
 
-La clase :class:`RealtimeMonitor` vigila directorios (recursivamente) y
-archivos concretos. En Windows se usa un backend nativo basado en ``ctypes``
-y ``ReadDirectoryChangesW``; después se prueba ``watchdog`` y, como último
-recurso, un sondeo con ``os.stat`` que no requiere dependencias externas.
-Todo el análisis se realiza en un único hilo de trabajo que consume una cola
-de rutas pendientes.
+The :class:`RealtimeMonitor` watches directories (recursively) and individual
+files. On Windows it uses a native backend based on ``ctypes`` and
+``ReadDirectoryChangesW``; it then tries ``watchdog`` and, as a last resort,
+an ``os.stat`` polling loop that requires no external dependencies.
+All analysis is performed by a single worker thread that consumes a queue
+of pending paths.
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ from .engine.signatures import SignatureDatabase
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
-# Constantes y estructuras del backend nativo de Windows (ctypes puro).
-# Se declaran en todos los sistemas para que el módulo sea importable en
-# plataformas donde ``ctypes.WinDLL`` no existe.
+# Constants and structures of the native Windows backend (pure ctypes).
+# Declared on all platforms so the module remains importable on systems
+# where ``ctypes.WinDLL`` does not exist.
 _FILE_LIST_DIRECTORY = 0x0001
 _FILE_SHARE_READ = 0x0001
 _FILE_SHARE_WRITE = 0x0002
@@ -72,7 +72,7 @@ _LPCWSTR = ctypes.c_wchar_p
 
 
 class _OVERLAPPED(ctypes.Structure):
-    """Estructura OVERLAPPED alineada con el ABI de Windows."""
+    """OVERLAPPED structure aligned with the Windows ABI."""
 
     _fields_ = [
         ("Internal", _LPVOID),
@@ -84,7 +84,7 @@ class _OVERLAPPED(ctypes.Structure):
 
 
 class _FILE_NOTIFY_INFORMATION(ctypes.Structure):
-    """Cabecera de una entrada devuelta por ``ReadDirectoryChangesW``."""
+    """Header of an entry returned by ``ReadDirectoryChangesW``."""
 
     _fields_ = [
         ("NextEntryOffset", _DWORD),
@@ -95,7 +95,7 @@ class _FILE_NOTIFY_INFORMATION(ctypes.Structure):
 
 
 def _load_kernel32() -> Any | None:
-    """Carga kernel32 con ``use_last_error``; devuelve ``None`` si no está disponible."""
+    """Load kernel32 with ``use_last_error``; return ``None`` if unavailable."""
     if os.name != "nt":
         return None
     try:
@@ -123,7 +123,7 @@ def _load_kernel32() -> Any | None:
         kernel32.WaitForSingleObject.restype = _DWORD
         kernel32.CloseHandle.argtypes = [_HANDLE]
         kernel32.CloseHandle.restype = _BOOL
-    except (AttributeError, OSError, ValueError):  # pragma: no cover - depende del entorno
+    except (AttributeError, OSError, ValueError):  # pragma: no cover - environment-dependent
         return None
     return kernel32
 
@@ -131,29 +131,30 @@ def _load_kernel32() -> Any | None:
 _kernel32 = _load_kernel32()
 _HAS_NATIVE = _kernel32 is not None
 
-# ``watchdog`` es opcional. Si no está disponible se define una base vacía
-# para que la declaración del manejador siga siendo válida.
+# ``watchdog`` is optional. If unavailable, define an empty base
+# so the handler declaration remains valid.
 try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
-except ImportError:  # pragma: no cover - depende del entorno
+except ImportError:  # pragma: no cover - environment-dependent
     Observer = None
 
     class FileSystemEventHandler:
-        """Base vacía cuando ``watchdog`` no está instalado."""
+        """Empty base when ``watchdog`` is not installed."""
 
 
 _HAS_WATCHDOG = Observer is not None
 
 Action = str
-"""Acción asociada a un hallazgo: quarantined/detected/error (clean si no hay hallazgos)."""
+"""Action associated with a finding: quarantined/detected/error (clean when there are no findings)."""
 
 
 def available_backends() -> list[str]:
-    """Devuelve los backends utilizables, ordenados por preferencia.
+    """Return the usable backends, in order of preference.
 
-    En Windows se prefiere el backend nativo (sin dependencias), después
-    ``watchdog`` si se puede importar y finalmente el sondeo, siempre disponible.
+    On Windows the native backend (dependency-free) is preferred, then
+    ``watchdog`` if it can be imported, and finally polling, which is always
+    available.
     """
     backends: list[str] = []
     if _HAS_NATIVE:
@@ -165,7 +166,7 @@ def available_backends() -> list[str]:
 
 
 def _is_link(path: Path) -> bool:
-    """Detecta symlinks y, en Windows, junctions/reparse points."""
+    """Detect symlinks and, on Windows, junctions/reparse points."""
     try:
         if path.is_symlink():
             return True
@@ -181,7 +182,7 @@ def _is_link(path: Path) -> bool:
 
 
 class _ChangeHandler(FileSystemEventHandler):
-    """Traduce los eventos de watchdog en rutas candidatas a análisis."""
+    """Translate watchdog events into candidate paths for analysis."""
 
     def __init__(
         self,
@@ -194,7 +195,7 @@ class _ChangeHandler(FileSystemEventHandler):
         self._files = frozenset(str(path) for path in files)
 
     def _accept(self, raw_path: str) -> None:
-        """Ignora directorios y rutas que no pertenecen a esta vigilancia."""
+        """Ignore directories and paths that do not belong to this watch."""
         path = Path(raw_path)
         if str(path) not in self._files and not any(
             path.is_relative_to(directory) for directory in self._directories
@@ -216,11 +217,11 @@ class _ChangeHandler(FileSystemEventHandler):
 
 
 class _NativeDirectoryWatcher(threading.Thread):
-    """Vigila un directorio con ``ReadDirectoryChangesW`` sobre E/S solapada.
+    """Watch a directory using ``ReadDirectoryChangesW`` with overlapped I/O.
 
-    Cada hilo posee su propio handle de directorio, evento manual y buffer de
-    64 KiB. ``request_stop`` cancela la E/S pendiente con ``CancelIoEx`` y el
-    hilo libera todos los handles en ``finally``.
+    Each thread owns its own directory handle, manual-reset event, and
+    64 KiB buffer. ``request_stop`` cancels the pending I/O with ``CancelIoEx``
+    and the thread releases all handles in ``finally``.
     """
 
     def __init__(
@@ -244,18 +245,18 @@ class _NativeDirectoryWatcher(threading.Thread):
         self._bytes = _DWORD(0)
 
     def request_stop(self) -> None:
-        """Pide la cancelación de la lectura pendiente sin bloquear."""
+        """Request cancellation of the pending read without blocking."""
         self._stop_request.set()
         with self._lock:
             handle = self._handle
             if handle is not None and handle != _INVALID_HANDLE_VALUE and _kernel32:
                 try:
                     _kernel32.CancelIoEx(handle, ctypes.byref(self._overlapped))
-                except (OSError, ValueError):  # pragma: no cover - handle ya cerrado
+                except (OSError, ValueError):  # pragma: no cover - handle already closed
                     pass
 
     def run(self) -> None:
-        """Abre el directorio, publica cambios y cierra los handles siempre."""
+        """Open the directory, publish changes, and always close the handles."""
         handle = None
         event = None
         try:
@@ -271,30 +272,30 @@ class _NativeDirectoryWatcher(threading.Thread):
                 None,
             )
             if handle is None or handle == _INVALID_HANDLE_VALUE:
-                self._error(f"no se pudo abrir el directorio ({ctypes.get_last_error()})")
+                self._error(f"could not open the directory ({ctypes.get_last_error()})")
                 return
             event = _kernel32.CreateEventW(None, True, False, None)
             if not event or event == _INVALID_HANDLE_VALUE:
-                self._error("no se pudo crear el evento de E/S solapada")
+                self._error("could not create the overlapped I/O event")
                 return
             with self._lock:
                 self._handle = handle
                 self._event = event
                 self._overlapped.hEvent = event
             self._watch(handle, event)
-        except Exception as exc:  # noqa: BLE001 - un error de E/S no debe tumbar el monitor
-            self._error(f"error inesperado: {exc}")
+        except Exception as exc:  # noqa: BLE001 - an I/O error must not bring down the monitor
+            self._error(f"unexpected error: {exc}")
         finally:
             self._close(handle, event)
 
     def _watch(self, handle: int, event: int) -> None:
-        """Encadena lecturas solapadas hasta que se solicite la parada."""
+        """Chain overlapped reads until a stop is requested."""
         if _kernel32 is None:
-            self._error("backend nativo no disponible")
+            self._error("native backend unavailable")
             return
         buffer = ctypes.cast(self._buffer, _LPVOID)
         while True:
-            # El cerrojo garantiza que ``request_stop`` cancele después de la lectura.
+            # The lock ensures ``request_stop`` cancels after the read.
             with self._lock:
                 if self._stop_request.is_set():
                     break
@@ -314,17 +315,17 @@ class _NativeDirectoryWatcher(threading.Thread):
             if not started:
                 error = ctypes.get_last_error()
                 if not self._stop_request.is_set() and error != _ERROR_OPERATION_ABORTED:
-                    self._error(f"ReadDirectoryChangesW falló ({error})")
+                    self._error(f"ReadDirectoryChangesW failed ({error})")
                 break
             while not self._stop_request.is_set():
                 wait = _kernel32.WaitForSingleObject(event, _NATIVE_WAIT_MS)
                 if wait == _WAIT_OBJECT_0:
                     break
                 if wait == _WAIT_FAILED:
-                    self._error(f"WaitForSingleObject falló ({ctypes.get_last_error()})")
+                    self._error(f"WaitForSingleObject failed ({ctypes.get_last_error()})")
                     return
-            # CancelIoEx ya fue solicitado si hay parada: la operación termina con
-            # ERROR_OPERATION_ABORTED, que se trata como una salida normal.
+            # CancelIoEx has already been requested on stop: the operation ends
+            # with ERROR_OPERATION_ABORTED, which is treated as a normal exit.
             completed = _kernel32.GetOverlappedResult(
                 handle, ctypes.byref(self._overlapped), ctypes.byref(self._bytes), True
             )
@@ -334,9 +335,9 @@ class _NativeDirectoryWatcher(threading.Thread):
                 if error == _ERROR_OPERATION_ABORTED or self._stop_request.is_set():
                     break
                 if error == _ERROR_INSUFFICIENT_BUFFER:
-                    self._error("buffer de eventos desbordado; se reanuda la vigilancia")
+                    self._error("event buffer overflowed; resuming monitoring")
                     continue
-                self._error(f"GetOverlappedResult falló ({error})")
+                self._error(f"GetOverlappedResult failed ({error})")
                 break
             if self._stop_request.is_set():
                 break
@@ -344,7 +345,7 @@ class _NativeDirectoryWatcher(threading.Thread):
                 self._parse_events(self._bytes.value)
 
     def _parse_events(self, size: int) -> None:
-        """Convierte las entradas del buffer en rutas y las publica en la cola."""
+        """Convert buffer entries into paths and publish them to the queue."""
         offset = 0
         limit = min(size, _NATIVE_BUFFER_SIZE)
         char_size = ctypes.sizeof(ctypes.c_wchar)
@@ -363,15 +364,15 @@ class _NativeDirectoryWatcher(threading.Thread):
                     candidate = self._root / name
                     if self._is_safe(candidate):
                         self._callback(candidate)
-            except (ValueError, OSError) as exc:  # pragma: no cover - buffer corrupto
-                self._error(f"evento no válido: {exc}")
+            except (ValueError, OSError) as exc:  # pragma: no cover - corrupt buffer
+                self._error(f"invalid event: {exc}")
                 break
             if not entry.NextEntryOffset:
                 break
             offset += entry.NextEntryOffset
 
     def _is_safe(self, path: Path) -> bool:
-        """Descarta rutas fuera de la raíz o que cruzan reparse points."""
+        """Discard paths outside the root or that cross reparse points."""
         try:
             relative = path.relative_to(self._root)
         except ValueError:
@@ -384,7 +385,7 @@ class _NativeDirectoryWatcher(threading.Thread):
         return not _is_link(path)
 
     def _close(self, handle: int | None, event: int | None) -> None:
-        """Cancela la E/S pendiente, drena el resultado y cierra los handles."""
+        """Cancel pending I/O, drain the result, and close the handles."""
         with self._lock:
             self._handle = None
             self._event = None
@@ -398,22 +399,22 @@ class _NativeDirectoryWatcher(threading.Thread):
                 _kernel32.GetOverlappedResult(
                     handle, ctypes.byref(self._overlapped), ctypes.byref(self._bytes), False
                 )
-        except (OSError, ValueError):  # pragma: no cover - handle ya cerrado
+        except (OSError, ValueError):  # pragma: no cover - handle already closed
             pass
         for handle_to_close in (event, handle):
             if handle_to_close and handle_to_close != _INVALID_HANDLE_VALUE:
                 try:
                     _kernel32.CloseHandle(handle_to_close)
-                except (OSError, ValueError):  # pragma: no cover - handle ya cerrado
+                except (OSError, ValueError):  # pragma: no cover - handle already closed
                     pass
 
     def _error(self, message: str) -> None:
-        """Informa del problema a través del registrador del monitor."""
+        """Report the problem through the monitor's logger."""
         self._error_callback(str(self._root), f"native: {message}")
 
 
 class RealtimeMonitor:
-    """Vigila rutas, analiza cambios y envía a cuarentena los hallazgos."""
+    """Monitor paths, analyze changes, and quarantine findings."""
 
     ACTION_QUARANTINED = "quarantined"
     ACTION_DETECTED = "detected"
@@ -434,13 +435,13 @@ class RealtimeMonitor:
         backend: str | None = None,
     ) -> None:
         if poll_interval <= 0:
-            raise ValueError("poll_interval debe ser positivo")
+            raise ValueError("poll_interval must be positive")
         if grace_period < 0:
-            raise ValueError("grace_period no puede ser negativo")
+            raise ValueError("grace_period cannot be negative")
         backends = available_backends()
         if backend is not None and backend not in backends:
             raise ValueError(
-                f"backend {backend!r} no disponible; opciones válidas: {', '.join(backends)}"
+                f"backend {backend!r} unavailable; valid options: {', '.join(backends)}"
             )
 
         self.paths = tuple(Path(path).absolute() for path in paths)
@@ -454,7 +455,7 @@ class RealtimeMonitor:
         self.grace_period = float(grace_period)
         self._backend = backend if backend is not None else backends[0]
 
-        # Un único hilo de escaneo, sin seguimiento de enlaces y con hash siempre.
+        # A single scan thread, no link following, and hashing always enabled.
         self.scan_config: ScanConfig = replace(
             self.config, hash_all=True, follow_symlinks=False, jobs=1
         )
@@ -478,22 +479,22 @@ class RealtimeMonitor:
 
     @staticmethod
     def available_backends() -> list[str]:
-        """Alias de método para :func:`available_backends`."""
+        """Method alias for :func:`available_backends`."""
         return available_backends()
 
     @property
     def backend(self) -> str:
-        """Backend seleccionado (``native``, ``watchdog`` o ``polling``)."""
+        """Selected backend (``native``, ``watchdog``, or ``polling``)."""
         return self._backend
 
     @property
     def is_alive(self) -> bool:
-        """Indica si el hilo de trabajo sigue activo."""
+        """Whether the worker thread is still alive."""
         thread = self._thread
         return bool(thread is not None and thread.is_alive())
 
     def start(self) -> None:
-        """Arranca el observador y el hilo de trabajo (idempotente)."""
+        """Start the observer and worker thread (idempotent)."""
         with self._state_lock:
             if self.is_alive:
                 return
@@ -502,13 +503,13 @@ class RealtimeMonitor:
                 self._start_observer()
             elif self._backend == "native" and _HAS_NATIVE:
                 self._start_native()
-                # El backend nativo solo sondea los archivos sueltos; los
-                # directorios son gestionados por ReadDirectoryChangesW.
+                # The native backend only polls loose files; directories are
+                # handled by ReadDirectoryChangesW.
                 self._snapshot = self._build_snapshot()
                 self._last_poll = time.monotonic()
             else:
-                # La línea base se toma aquí para no perder archivos creados
-                # justo después de que ``start()`` devuelva el control.
+                # The baseline is taken here so files created right after
+                # ``start()`` returns are not missed.
                 self._snapshot = self._build_snapshot()
                 self._last_poll = time.monotonic()
             self._thread = threading.Thread(
@@ -517,7 +518,7 @@ class RealtimeMonitor:
             self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Detiene observadores y hilo de trabajo. Seguro llamarlo varias veces."""
+        """Stop observers and the worker thread. Safe to call multiple times."""
         with self._state_lock:
             self._stop_event.set()
             thread = self._thread
@@ -527,14 +528,14 @@ class RealtimeMonitor:
             self._observer = None
             self._native_watchers.clear()
             self._pending.clear()
-        self._queue.put("")  # Despierta al hilo si está esperando en la cola.
+        self._queue.put("")  # Wake the thread if it is waiting on the queue.
         for watcher in watchers:
             watcher.request_stop()
         deadline = time.monotonic() + max(0.0, timeout)
         if observer is not None:
             try:
                 observer.stop()
-            except Exception as exc:  # noqa: BLE001 - un observer muerto no debe impedir parar
+            except Exception as exc:  # noqa: BLE001 - a dead observer must not prevent shutdown
                 self._emit_error("observer", f"stop: {exc}")
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=max(0.0, deadline - time.monotonic()))
@@ -547,11 +548,11 @@ class RealtimeMonitor:
                 pass
 
     def process_path(self, path: str | Path) -> tuple[ScanResult, str]:
-        """Analiza un archivo, lo aísla si procede y devuelve ``(resultado, acción)``.
+        """Analyze a file, quarantine it if needed, and return ``(result, action)``.
 
-        La acción es ``"quarantined"`` si se aisló, ``"detected"`` si hay
-        hallazgos pero no hay cuarentena, ``"error"`` si falló el proceso y
-        ``"clean"`` cuando no hay hallazgos (o la ruta se ignora).
+        The action is ``"quarantined"`` if it was isolated, ``"detected"`` if
+        there are findings but no quarantine, ``"error"`` if processing failed,
+        and ``"clean"`` when there are no findings (or the path is ignored).
         """
         target = Path(path)
         result = ScanResult(roots=[str(target)])
@@ -564,7 +565,7 @@ class RealtimeMonitor:
             if result.errors and not result.findings:
                 action = self.ACTION_ERROR
                 for error in result.errors:
-                    self._emit_error(str(target), error.get("error", "error de análisis"))
+                    self._emit_error(str(target), error.get("error", "analysis error"))
                 return result, action
             if not result.findings:
                 return result, action
@@ -587,7 +588,7 @@ class RealtimeMonitor:
                 self._emit_detection(finding, action)
             for finding in result.findings:
                 self._notify(finding, action)
-        except Exception as exc:  # noqa: BLE001 - el monitor nunca debe morir por un archivo
+        except Exception as exc:  # noqa: BLE001 - the monitor must never die because of a single file
             action = self.ACTION_ERROR
             self._emit_error(str(target), str(exc))
             for finding in result.findings:
@@ -595,7 +596,7 @@ class RealtimeMonitor:
         return result, action
 
     def _start_observer(self) -> None:
-        """Configura watchdog para directorios y archivos concretos."""
+        """Configure watchdog for directories and individual files."""
         directories = [
             item for item in self.paths if self._is_watchable(item, require_file=False)
         ]
@@ -612,13 +613,13 @@ class RealtimeMonitor:
         self._observer = observer
 
     def _start_native(self) -> None:
-        """Crea un vigilante nativo por directorio, sin seguir enlaces."""
+        """Create one native watcher per directory, without following links."""
         directories = [
             item
             for item in self.paths
             if item.is_dir() and self._is_watchable(item, require_file=False)
         ]
-        # Un directorio contenido en otro ya queda cubierto por la raíz mayor.
+        # A directory inside another is already covered by the parent root.
         selected: list[Path] = []
         for directory in sorted(set(directories), key=lambda item: len(item.parts)):
             if not any(directory.is_relative_to(other) for other in selected):
@@ -637,7 +638,7 @@ class RealtimeMonitor:
             self._native_watchers.append(watcher)
 
     def _worker(self) -> None:
-        """Consume la cola y procesa las rutas cuando pasa el grace period."""
+        """Consume the queue and process paths once the grace period elapses."""
         while not self._stop_event.is_set():
             now = time.monotonic()
             if self._poll_enabled and now - self._last_poll >= self.poll_interval:
@@ -651,7 +652,7 @@ class RealtimeMonitor:
         self._pending.clear()
 
     def _next_timeout(self) -> float:
-        """Espera como máximo hasta el próximo vencimiento o sondeo."""
+        """Wait at most until the next deadline or poll."""
         timeout = self.poll_interval if self._poll_enabled else 0.25
         if self._pending:
             remaining = min(self._pending.values()) - time.monotonic()
@@ -659,7 +660,7 @@ class RealtimeMonitor:
         return max(0.01, timeout)
 
     def _process_due(self) -> None:
-        """Extrae las rutas listas, marcándolas como en proceso."""
+        """Extract due paths, marking them as in progress."""
         now = time.monotonic()
         with self._state_lock:
             due = [
@@ -678,7 +679,7 @@ class RealtimeMonitor:
                     self._in_progress.discard(key)
 
     def _enqueue(self, path: str | Path) -> None:
-        """Programa una ruta tras el grace period, fusionando eventos repetidos."""
+        """Schedule a path after the grace period, merging repeated events."""
         if self._stop_event.is_set():
             return
         candidate = Path(path)
@@ -694,7 +695,7 @@ class RealtimeMonitor:
         self._queue.put(key)
 
     def _build_snapshot(self) -> dict[str, tuple[int, int]]:
-        """Guarda ``(tamaño, mtime)`` de los archivos vigilados ahora mismo."""
+        """Record ``(size, mtime)`` of the currently watched files."""
         snapshot: dict[str, tuple[int, int]] = {}
         for path in self._iter_watched_files():
             try:
@@ -705,7 +706,7 @@ class RealtimeMonitor:
         return snapshot
 
     def _poll_once(self) -> None:
-        """Detecta altas y cambios comparando el estado actual con el anterior."""
+        """Detect additions and changes by comparing the current state with the previous one."""
         current = self._build_snapshot()
         for key, signature in current.items():
             if self._snapshot.get(key) != signature:
@@ -713,7 +714,7 @@ class RealtimeMonitor:
         self._snapshot = current
 
     def _iter_watched_files(self) -> Iterator[Path]:
-        """Recorre las rutas vigiladas sin seguir enlaces ni directorios excluidos."""
+        """Walk watched paths without following links or excluded directories."""
         for root in self.paths:
             if not self._is_watchable(root, require_file=False):
                 continue
@@ -721,7 +722,7 @@ class RealtimeMonitor:
                 yield root
                 continue
             if self._backend == "native":
-                # Los directorios ya los vigila ReadDirectoryChangesW.
+                # Directories are already watched by ReadDirectoryChangesW.
                 continue
             for current, dirs, files in os.walk(root, topdown=True, followlinks=False):
                 base = Path(current)
@@ -739,7 +740,7 @@ class RealtimeMonitor:
                     yield path
 
     def _is_watchable(self, path: Path, *, require_file: bool = True) -> bool:
-        """Comprueba existencia, enlaces, exclusiones y directorio de cuarentena."""
+        """Check existence, links, exclusions, and the quarantine directory."""
         try:
             exists = path.is_file() if require_file else path.is_dir() or path.is_file()
             if not exists or _is_link(path) or self._is_excluded(path):
@@ -753,7 +754,7 @@ class RealtimeMonitor:
         return not candidate.startswith(directory + os.sep)
 
     def _is_excluded(self, path: Path) -> bool:
-        """Descarta archivos bajo ``config.exclude_dirs`` (comparación insensible)."""
+        """Discard files under ``config.exclude_dirs`` (case-insensitive comparison)."""
         try:
             parts = path.resolve().parts
         except OSError:
@@ -796,7 +797,7 @@ class RealtimeMonitor:
             return
         try:
             self.on_finding(finding, action)
-        except Exception as exc:  # noqa: BLE001 - un callback defectuoso no detiene el monitor
+        except Exception as exc:  # noqa: BLE001 - a broken callback must not stop the monitor
             self._emit_error(finding.path, f"callback: {exc}")
 
 

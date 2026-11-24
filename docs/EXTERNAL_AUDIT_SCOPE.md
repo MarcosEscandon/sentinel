@@ -1,104 +1,105 @@
-# Alcance propuesto para una auditoría de seguridad externa
+# Proposed scope for an external security audit
 
-**Estado: propuesta.** No se ha contratado ni realizado ninguna auditoría
-independiente. `sentinel audit` es una autoevaluación y no sustituye a esto.
+**Status: proposal.** No independent audit has been commissioned or performed.
+`sentinel audit` is a self-assessment and does not replace this.
 
-## 1. Objetivo
+## 1. Objective
 
-Obtener una opinión independiente sobre si Sentinel cumple lo que afirma su
-documentación y si un atacante con privilegios de usuario puede eludirlo,
-manipular su estado persistente o convertirlo en un vector de ataque.
+Obtain an independent opinion on whether Sentinel delivers what its
+documentation claims and whether an attacker with user privileges can bypass it,
+tamper with its persistent state or turn it into an attack vector.
 
-Preguntas que debe responder la auditoría:
+Questions the audit should answer:
 
-1. ¿Las firmas, la allowlist y la cuarentena pueden ser manipuladas por un
-   proceso con los privilegios del usuario que ejecuta el escáner?
-2. ¿El análisis de contenedores, OLE y VBA es resistente a archivos hostiles
-   (bombas, anidamiento, entropía, ReDoS y rutas).
-3. ¿La cadena de actualizaciones Ed25519 y el anti-rollback son correctos, o
-   existe una ruta para instalar una base anterior o no firmada?
-4. ¿El servicio de Windows y el monitor en tiempo real amplían la superficie
-   de ataque más allá de lo documentado?
-5. ¿Las afirmaciones de `README.md`, `THREAT_MODEL.md` y
-   `KERNEL_FILTER_DESIGN.md` son exactas, o hay controles que no existen?
+1. Can the signatures, allowlist and quarantine be tampered with by a process
+   running with the privileges of the user executing the scanner?
+2. Is container, OLE and VBA analysis resilient against hostile files (bombs,
+   nesting, entropy, ReDoS and paths)?
+3. Is the Ed25519 update chain and anti-rollback correct, or is there a path to
+   install an older or unsigned database?
+4. Do the Windows service and real-time monitor expand the attack surface
+   beyond what is documented?
+5. Are the claims in `README.md`, `THREAT_MODEL.md` and
+   `KERNEL_FILTER_DESIGN.md` accurate, or are there controls that do not exist?
 
-## 2. Alcance inclusiones
+## 2. Scope inclusions
 
-| Componente | Qué se entrega | Énfasis |
+| Component | What is delivered | Emphasis |
 | --- | --- | --- |
-| `sentinel/engine/` | `signatures.py`, `scanner.py`, `heuristics.py`, `containers.py`, `ole.py`, `vba.py`, `yara.py` | Parsing hostil, límites anti-bomba, timeout de regex, evasión |
-| `sentinel/core/` | `allowlist.py`, `quarantine.py`, `logging.py`, `database.py`, `models.py` | HMAC, ACL, inyección SQL, auto-exclusión |
-| `sentinel/` raíz | `crypto.py`, `updates.py`, `integrity.py`, `audit.py`, `realtime.py`, `service.py`, `cli.py`, `gui.py`, `feeds.py`, `notify.py` | Cadena de confianza, rollback, manipulación y control del servicio |
-| `packaging/` | `build.ps1`, `sentinel.spec` | Manifiesto, firma incluida, secretos en el bundle |
-| `tests/` | suite completa y resultados | Cobertura de los controles de seguridad |
-| Documentación | README, THREAT_MODEL, PERFORMANCE y los dos handoff | Correspondencia con el código |
+| `sentinel/engine/` | `signatures.py`, `scanner.py`, `heuristics.py`, `containers.py`, `ole.py`, `vba.py`, `yara.py` | Hostile parsing, anti-bomb limits, regex timeout, evasion |
+| `sentinel/core/` | `allowlist.py`, `quarantine.py`, `logging.py`, `database.py`, `models.py` | HMAC, ACL, SQL injection, self-exclusion |
+| `sentinel/` root | `crypto.py`, `updates.py`, `integrity.py`, `audit.py`, `realtime.py`, `service.py`, `cli.py`, `gui.py`, `feeds.py`, `notify.py` | Trust chain, rollback, tampering and service control |
+| `packaging/` | `build.ps1`, `sentinel.spec` | Manifest, included signature, secrets in the bundle |
+| `tests/` | Full suite and results | Coverage of security controls |
+| Documentation | README, THREAT_MODEL, PERFORMANCE and the two handoffs | Correspondence with the code |
 
-## 3. Fuera de alcance
+## 3. Out of scope
 
-- Malware real: solo EICAR, marcadores sintéticos e IOCs públicos.
-- Infraestructura de producción: no hay servidor de firmas, CA EV/OV, filtro
-  de kernel ni despliegue masivo que auditar.
-- Certificación formal (ISO 27001, SOC 2, Common Criteria).
-- Pruebas de penetración a una red corporativa o a los sistemas del auditor.
-- Revisión de dependencias de terceros: ya se entregó `pip-audit` y `bandit`,
-  pero el auditor puede replicarlos.
+- Real malware: only EICAR, synthetic markers and public IOCs.
+- Production infrastructure: there is no signature server, EV/OV CA, kernel
+  filter or large-scale deployment to audit.
+- Formal certification (ISO 27001, SOC 2, Common Criteria).
+- Penetration testing of a corporate network or of the auditor's systems.
+- Review of third-party dependencies: `pip-audit` and `bandit` have already been
+  delivered, but the auditor may replicate them.
 
-## 4. Metodología esperada
+## 4. Expected methodology
 
-1. **Revisión de documentación y código** (1–2 días): contraste de
-   `THREAT_MODEL.md` con la implementación, buscando afirmaciones sin control.
-2. **Pruebas estáticas** (0,5 días): reproducción de `ruff`, `bandit`,
-   `pip-audit` y búsqueda de secretos en el historial de Git.
-3. **Pruebas dinámicas en VM aislada** (2–3 días): corpus sintético de
-   contenedores anidados, OLE/VBA, PE manipulado, rutas largas, archivos
-   comprimidos con ratio extremo y expresiones regulares agresivas.
-4. **Amenaza con privilegios de usuario** (1–2 días): intentar modificar
-   `quarantine.key`, `index.json`, `audit.jsonl`, `signatures.json`, la
-   allowlist o terminar el monitor; comprobar qué se detecta y qué no.
-5. **Cadena de actualizaciones** (1 día): firma válida, firma corrupta,
-   rollback, `file://`, URL sin host, límite de tamaño y sustitución atómica.
-6. **Servicio y monitor** (1 día): instalación, home persistida, `StopEvent`,
-   reconexión y comportamiento al matar el proceso de usuario.
+1. **Documentation and code review** (1–2 days): compare `THREAT_MODEL.md`
+   with the implementation, looking for claims without a corresponding control.
+2. **Static testing** (0.5 days): reproduce `ruff`, `bandit`, `pip-audit` and
+   search the Git history for secrets.
+3. **Dynamic testing in an isolated VM** (2–3 days): synthetic corpus of nested
+   containers, OLE/VBA, tampered PE, long paths, extremely high-ratio compressed
+   files and aggressive regular expressions.
+4. **User-privilege threat** (1–2 days): attempt to modify `quarantine.key`,
+   `index.json`, `audit.jsonl`, `signatures.json`, the allowlist or terminate the
+   monitor; check what is detected and what is not.
+5. **Update chain** (1 day): valid signature, corrupt signature, rollback,
+   `file://`, URL without a host, size limit and atomic replacement.
+6. **Service and monitor** (1 day): installation, persisted home, `StopEvent`,
+   reconnection and behavior when the user process is killed.
 
-## 5. Entregable de la auditoría
+## 5. Audit deliverable
 
-- Informe con hallazgos clasificados por severidad, CWE y prueba de concepto.
-- Mapa claro de **afirmación documentada → control real → evidencia**.
-- Lista de controles que el auditor considera ausentes o insuficientes.
-- Recomendaciones priorizadas, distinguiendo correcciones de código de cambios
-  de infraestructura (certificado, kernel, externalización).
-- Carta de retest tras las correcciones.
+- Report with findings classified by severity, CWE and proof of concept.
+- Clear map of **documented claim → actual control → evidence**.
+- List of controls the auditor considers missing or insufficient.
+- Prioritized recommendations, distinguishing code fixes from infrastructure
+  changes (certificate, kernel, outsourcing).
+- Retest letter after the fixes.
 
-## 6. Paquete de evidencia a entregar
+## 6. Evidence package to deliver
 
-- Repositorio limpio y con `.gitignore` efectivo.
-- `python -m pytest -q` → 127 pruebas en verde.
-- `python -m ruff check .` → sin avisos.
-- `python -m bandit -r sentinel -x tests` → 0 avisos; `docs/bandit-results.json`.
-- `pip-audit` sobre los extras → 0 vulnerabilidades;
+- Clean repository with an effective `.gitignore`.
+- `python -m pytest -q` → 127 tests passing.
+- `python -m ruff check .` → no warnings.
+- `python -m bandit -r sentinel -x tests` → 0 warnings; `docs/bandit-results.json`.
+- `pip-audit` over the extras → 0 vulnerabilities;
   `docs/pip-audit-results.json`.
-- `sentinel selftest` y `sentinel audit` → 100/100.
-- E2E registrado: EICAR → hash y contenido → cuarentena → `verify` →
-  `restore` con SHA-256 idéntico, y códigos de salida 0/1/2.
-- `docs/EV_OV_HANDOFF.md` y `docs/KERNEL_FILTER_DESIGN.md` como pendientes
-  explícitos, no como controles implementados.
-- `git ls-files` sin claves privadas, `packaging/tools/`, `dist/` ni `build/`.
+- `sentinel selftest` and `sentinel audit` → 100/100.
+- Recorded E2E run: EICAR → hash and content → quarantine → `verify` →
+  `restore` with an identical SHA-256, and exit codes 0/1/2.
+- `docs/EV_OV_HANDOFF.md` and `docs/KERNEL_FILTER_DESIGN.md` as explicit pending
+  items, not implemented controls.
+- `git ls-files` without private keys, `packaging/tools/`, `dist/` or `build/`.
 
-## 7. Restricciones y reglas de compromiso
+## 7. Constraints and rules of engagement
 
-- El auditor recibe el código y una VM; no necesita acceso a este equipo.
-- No se facilita la clave privada Ed25519 de distribución; se genera un par
-  desechable para las pruebas de actualización.
-- Cualquier hallazgo que requiera malware real se sustituye por un marcador
-  sintético equivalente.
-- La auditoría debe declarar explícitamente qué no pudo verificar; un informe
-  que solo repita `sentinel audit` no cumple el objetivo.
+- The auditor receives the code and a VM; they do not need access to this
+  machine.
+- The distribution Ed25519 private key is not provided; a disposable pair is
+  generated for the update tests.
+- Any finding requiring real malware is replaced with an equivalent synthetic
+  marker.
+- The audit must explicitly declare what it could not verify; a report that
+  merely repeats `sentinel audit` does not meet the objective.
 
-## 8. Cómo se usa el resultado
+## 8. How the result is used
 
-Los hallazgos confirmados se convierten en issues con prueba de concepto y
-prueba de regresión antes de cerrarse. Los documentos `README.md` y
-`THREAT_MODEL.md` se actualizan con el resultado, incluidos los límites que la
-auditoría confirme. **Una auditoría externa tampoco convierte al prototipo en
-un producto certificado**: siguen pendientes el certificado EV/OV, el filtro
-de kernel y una base de firmas comercial.
+Confirmed findings are turned into issues with a proof of concept and a
+regression test before being closed. `README.md` and `THREAT_MODEL.md` are
+updated with the outcome, including the limitations the audit confirms.
+**An external audit does not turn the prototype into a certified product
+either**: the EV/OV certificate, the kernel filter and a commercial signature
+database remain outstanding.

@@ -22,14 +22,14 @@ def test_minimal_pe_parser():
 
 
 def test_non_pe_returns_empty():
-    assert analyze_pe(b"no soy un PE").is_pe is False
+    assert analyze_pe(b"i am not a PE").is_pe is False
     assert analyze_pe(b"MZ" + b"\x00" * 100).is_pe is False
 
 
 def test_double_extension_and_score():
     tuned = ScanConfig(entropy_threshold=7.0, entropy_min_size=64, suspicion_threshold=3.0)
     engine = HeuristicEngine(tuned)
-    assessment = engine.assess("factura.pdf.exe", b"contenido inocuo" * 10, 170)
+    assessment = engine.assess("invoice.pdf.exe", b"harmless content" * 10, 170)
     ids = {hit.rule_id for hit in assessment.hits}
     assert "HEUR-DOUBLE-EXT" in ids
     assert "HEUR-SCORE" in ids

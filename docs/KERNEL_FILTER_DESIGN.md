@@ -1,195 +1,195 @@
-# Diseño de filtro de sistema de archivos a nivel kernel
+# Kernel-level file system filter design
 
-**Estado: propuesta arquitectónica.** No hay código de driver en este
-repositorio, no se ha compilado con WDK y no se ha instalado nada en el kernel.
-El monitor actual (`realtime.py`) sigue siendo de modo usuario.
+**Status: architectural proposal.** There is no driver code in this repository,
+it has not been built with the WDK and nothing has been installed in the kernel.
+The current monitor (`realtime.py`) is still user-mode.
 
-## 1. Qué resuelve y qué no
+## 1. What it solves and what it does not
 
-El monitor actual usa `ReadDirectoryChangesW` (o `watchdog`/sondeo), con un
-buffer de 64 KiB. Un proceso con los mismos privilegios puede terminarlo,
-desbordar la cola o ejecutar el archivo antes de que venza el *grace period*.
+The current monitor uses `ReadDirectoryChangesW` (or `watchdog`/polling), with a
+64 KiB buffer. A process with the same privileges can terminate it, overflow the
+queue or execute the file before the *grace period* expires.
 
-Un minifiltro permitiría:
+A minifilter would allow:
 
-- Observar `IRP_MJ_CREATE`, `IRP_MJ_WRITE` y renombrados antes de que el archivo
-  se ejecute.
-- Negar la ejecución de un binario mientras el usuario decide, en lugar de
-  limitarse a moverlo a cuarentena después.
-- Proteger el proceso, su home y su base de firmas frente a terminates y
-  escrituras de otros procesos del mismo usuario.
+- Observing `IRP_MJ_CREATE`, `IRP_MJ_WRITE` and renames before the file is
+  executed.
+- Denying execution of a binary while the user decides, instead of merely
+  moving it to quarantine afterwards.
+- Protecting the process, its home and its signature database from termination
+  and writes by other processes of the same user.
 
-**No** resuelve: un atacante con privilegios de administrador (puede descargar
-o desactivar el filtro), malware que ya se ejecutaba antes de instalarlo, ni
-detección por sí mismo. Sigue siendo necesaria la base de firmas y el análisis.
+**It does not** solve: an attacker with administrator privileges (who can unload
+or disable the filter), malware that was already running before it was
+installed, nor detection by itself. A signature database and analysis are still
+required.
 
-## 2. Arquitectura propuesta
+## 2. Proposed architecture
 
 ```text
             IRP_MJ_CREATE / WRITE / SET_INFORMATION
- Archivos ───────────────────────────────────────────► [FltMgr]
-                                                         │
-                                                         ▼
-                                              [sentinel-filter.sys]
-                                     (minifiltro C/WDK, PASSIVE_LEVEL)
-                                                         │ FltSendMessage
-                                     puerto \SentinelFilterPort (ACL SYSTEM)
-                                                         │ FilterGetMessage /
-                                                         │ FilterReplyMessage
-                                                         ▼
-                                       [sentinel service / monitor]
-                              kernel_bridge.py (ctypes → FltLib.dll)
-                                                         │
-                    ┌────────────────────────────────────┼────────────────┐
-                    ▼                                    ▼                ▼
-          core/allowlist.py                     engine/scanner.py   core/quarantine.py
-          core/logging.py                       (hash + reglas)     (SHA-256 + HMAC)
+ Files ───────────────────────────────────────────► [FltMgr]
+                                                      │
+                                                      ▼
+                                           [sentinel-filter.sys]
+                                  (C/WDK minifilter, PASSIVE_LEVEL)
+                                                      │ FltSendMessage
+                                  port \SentinelFilterPort (ACL SYSTEM)
+                                                      │ FilterGetMessage /
+                                                      │ FilterReplyMessage
+                                                      ▼
+                                    [sentinel service / monitor]
+                           kernel_bridge.py (ctypes → FltLib.dll)
+                                                      │
+                 ┌────────────────────────────────────┼────────────────┐
+                 ▼                                    ▼                ▼
+       core/allowlist.py                     engine/scanner.py   core/quarantine.py
+       core/logging.py                       (hash + rules)     (SHA-256 + HMAC)
 ```
 
-Componentes:
+Components:
 
-1. **`sentinel-filter.sys`**: minifiltro registrado con `FltRegisterFilter`.
-   Se instancia en volúmenes locales; por defecto no sigue redireccionamientos
-   de red. Su única responsabilidad es observar, enviar mensajes y aplicar el
-   veredicto que recibe.
-2. **Puerto de comunicación**: creado con `FltCreateCommunicationPort` y un
-   nombre global (`\SentinelFilterPort`). La ACL del objeto se construye con
-   `FltBuildDefaultSecurityDescriptor` y se restringe a `SYSTEM` (y quizá
-   `Administrators` solo en builds de prueba). `MaxConnections = 2` para
-   permitir el servicio y una consola de diagnóstico.
-3. **`kernel_bridge.py`**: nueva capa de Python sin dependencias obligatorias,
-   usando `ctypes` sobre `FltLib.dll` (`FilterConnectCommunicationPort`,
-   `FilterGetMessage`, `FilterReplyMessage`, `FilterSendMessage`). Reutiliza la
-   lógica existente de `RealtimeMonitor.process_path()`.
-4. **Worker de análisis**: recibe la ruta, aplica la allowlist, calcula el
-   hash, ejecuta las reglas y devuelve `ALLOW`, `DETECT` o `QUARANTINE`.
+1. **`sentinel-filter.sys`**: minifilter registered with `FltRegisterFilter`.
+   It instantiates on local volumes; by default it does not follow network
+   redirections. Its only responsibility is to observe, send messages and apply
+   the verdict it receives.
+2. **Communication port**: created with `FltCreateCommunicationPort` and a
+   global name (`\SentinelFilterPort`). The object's ACL is built with
+   `FltBuildDefaultSecurityDescriptor` and restricted to `SYSTEM` (and perhaps
+   `Administrators` only in test builds). `MaxConnections = 2` allows the
+   service and a diagnostic console.
+3. **`kernel_bridge.py`**: a new Python layer with no mandatory dependencies,
+   using `ctypes` over `FltLib.dll` (`FilterConnectCommunicationPort`,
+   `FilterGetMessage`, `FilterReplyMessage`, `FilterSendMessage`). It reuses the
+   existing `RealtimeMonitor.process_path()` logic.
+4. **Analysis worker**: receives the path, applies the allowlist, computes the
+   hash, runs the rules and returns `ALLOW`, `DETECT` or `QUARANTINE`.
 
-## 3. Contrato de mensajes
+## 3. Message contract
 
-Cabecera fija y campos de longitud explícita; versión y *magic* para rechazar
-clientes incompatibles. Toda cadena se envía en UTF-16LE con longitud en
-bytes. Ningún mensaje supera 64 KiB; las rutas largas se truncan con un flags.
+Fixed header and fields with explicit lengths; version and *magic* to reject
+incompatible clients. Every string is sent as UTF-16LE with its length in bytes.
+No message exceeds 64 KiB; long paths are truncated with a flag.
 
-| Tipo | Origen | Contenido | Respuesta |
+| Type | Source | Content | Response |
 | --- | --- | --- | --- |
-| `HELLO` | usuario → kernel | versión, PID, nombre del proceso | `HELLO_ACK` con versión y *altitude* |
-| `SCAN_REQUEST` | kernel → usuario | `request_id`, PID, ruta del proceso, volumen, ruta del archivo, `DesiredAccess`, flags | `SCAN_VERDICT` con el mismo `request_id` |
-| `SCAN_VERDICT` | usuario → kernel | `request_id`, `ALLOW`/`BLOCK`/`QUARANTINE`, motivo | — |
-| `CONFIG_UPDATE` | usuario → kernel | rutas excluidas, modo (audit/enforce), tamaño máximo | ACK |
-| `HEARTBEAT` | ambos | contador, cola pendiente, pérdidas | ACK |
-| `SHUTDOWN` | usuario → kernel | motivo | — |
+| `HELLO` | user → kernel | version, PID, process name | `HELLO_ACK` with version and *altitude* |
+| `SCAN_REQUEST` | kernel → user | `request_id`, PID, process path, volume, file path, `DesiredAccess`, flags | `SCAN_VERDICT` with the same `request_id` |
+| `SCAN_VERDICT` | user → kernel | `request_id`, `ALLOW`/`BLOCK`/`QUARANTINE`, reason | — |
+| `CONFIG_UPDATE` | user → kernel | excluded paths, mode (audit/enforce), maximum size | ACK |
+| `HEARTBEAT` | both | counter, pending queue, losses | ACK |
+| `SHUTDOWN` | user → kernel | reason | — |
 
-Reglas del protocolo:
+Protocol rules:
 
-- `request_id` es un `UINT64` monótono; respuestas duplicadas o desconocidas se
-  ignoran.
-- Si el puente no responde en un plazo configurable (por ejemplo 5 s), el
-  driver aplica la política *fail-open*/*fail-closed* descrita abajo y emite un
-  evento de error.
-- El driver **nunca** confía en una ruta relativa: la convierte a nombre NT
-  completo (`\Device\HarddiskVolumeX\...`) antes de enviarla.
+- `request_id` is a monotonic `UINT64`; duplicate or unknown responses are
+  ignored.
+- If the bridge does not respond within a configurable period (for example 5 s),
+  the driver applies the *fail-open*/*fail-closed* policy described below and
+  emits an error event.
+- The driver **never** trusts a relative path: it converts it to a full NT name
+  (`\Device\HarddiskVolumeX\...`) before sending it.
 
-## 4. Decisiones de diseño
+## 4. Design decisions
 
-| Decisión | Elección | Razón |
+| Decision | Choice | Reason |
 | --- | --- | --- |
-| Punto de intercepción | `IRP_MJ_CREATE` con `DesiredAccess` que incluya `EXECUTE` para bloquear; `IRP_MJ_WRITE`/`CLEANUP` para escanear después de cerrar | Evita analizar cada lectura y permite frenar ejecuciones |
-| Modo de la llamada | `FltSendMessage` solo a `PASSIVE_LEVEL`, con timeout; nunca en una ruta de paging | Evita deadlocks y IRQL inválido |
-| Cola llena | Fail-closed para `EXECUTE`, fail-open para lecturas/escrituras, siempre con evento `realtime.error` | Un antivirus no debe dejar de arrancar el sistema, pero sí debe impedir la ejecución dudosa |
-| Falsos positivos | Modo `audit` por defecto; `enforce` solo después de ajustar la allowlist | El prototipo ya genera heurística falsa sobre datos aleatorios |
-| *Altitude* | Rango anti-virus 320000–329999, asignado por Microsoft para producción | No se debe elegir un valor arbitrario en un despliegue real |
-| Protección propia | Reglas de deny para escritura/terminación sobre la home, el exe y los Servicios del monitor | La clave de cuarentena y los logs están en la home |
-| Renombrados | `IRP_MJ_SET_INFORMATION` con `FileRenameInformation` para mantener el contexto | Un rename puede eludir una regla de nombre |
-| Exclusiones | La allowlist se envía al driver solo como filtro grueso por prefijo; la decisión final siempre está en usuario | Evita duplicar reglas y simplifica actualizaciones |
+| Interception point | `IRP_MJ_CREATE` with `DesiredAccess` including `EXECUTE` to block; `IRP_MJ_WRITE`/`CLEANUP` to scan after closing | Avoids analyzing every read and allows stopping executions |
+| Call mode | `FltSendMessage` only at `PASSIVE_LEVEL`, with a timeout; never on a paging path | Avoids deadlocks and invalid IRQL |
+| Full queue | Fail-closed for `EXECUTE`, fail-open for reads/writes, always with a `realtime.error` event | An antivirus must not prevent the system from starting, but it must prevent doubtful executions |
+| False positives | `audit` mode by default; `enforce` only after tuning the allowlist | The prototype already generates false heuristics on random data |
+| *Altitude* | Anti-virus range 320000–329999, assigned by Microsoft for production | An arbitrary value must not be chosen in a real deployment |
+| Self-protection | Deny rules for write/termination on the home, the exe and the monitor's services | The quarantine key and logs are in the home |
+| Renames | `IRP_MJ_SET_INFORMATION` with `FileRenameInformation` to preserve context | A rename can evade a name rule |
+| Exclusions | The allowlist is sent to the driver only as a coarse prefix filter; the final decision is always in user mode | Avoids duplicating rules and simplifies updates |
 
-## 5. Integración con el código actual
+## 5. Integration with the current code
 
-- El servicio existente (`service.py`) crearía el puente y mantendría un hilo
-  de lectura del puerto; no se sustituiría `RealtimeMonitor`, sino que se
-  añadiría un backend `native-kernel` seleccionable con `--backend`. Ese
-  backend, `kernel_bridge.py` y el propio driver **no existen hoy**: forman
-  parte de esta propuesta.
-- `process_path()` sigue siendo el único punto que decide cuarentena y
-  notificación; el driver solo ejecuta el veredicto. Así se conservan
-  `audit.jsonl`, `history.db`, HMAC de cuarentena y los códigos de salida.
-- La auto-exclusión de `AllowList.for_self()` se amplía con los archivos del
-  propio driver (`sentinel-filter.sys`, `.inf`, catálogo) para no auto-detectarse.
-- `sentinel audit` añadiría un check `realtime.driver` que compruebe que el
-  servicio está conectado al puerto; en modo usuario seguiría pasando con
+- The existing service (`service.py`) would create the bridge and maintain a
+  port reader thread; `RealtimeMonitor` would not be replaced, rather a
+  `native-kernel` backend selectable with `--backend` would be added. That
+  backend, `kernel_bridge.py` and the driver itself **do not exist today**:
+  they are part of this proposal.
+- `process_path()` remains the only point that decides quarantine and
+  notification; the driver only enforces the verdict. This preserves
+  `audit.jsonl`, `history.db`, the quarantine HMAC and the exit codes.
+- The self-exclusion of `AllowList.for_self()` would be extended with the
+  driver's own files (`sentinel-filter.sys`, `.inf`, catalog) to avoid
+  self-detection.
+- `sentinel audit` would add a `realtime.driver` check that verifies the
+  service is connected to the port; in user mode it would still pass with
   `realtime.backend`.
 
-## 6. Seguridad del canal
+## 6. Channel security
 
-- El puerto solo acepta `SYSTEM`; el servicio de Windows se ejecuta con esa
-  cuenta. La consola de diagnóstico requiere administrador.
-- El `HELLO` incluye PID y ruta del proceso; el driver verifica que el PID
-  coincide con el token del extremo conectado y rechaza clientes no autorizados.
-- Los mensajes llevan *magic*, versión y longitud: un proceso que escriba bytes
-  arbitrarios al puerto no puede fabricar un veredicto sin la ACL.
-- El driver no realiza E/S de archivo ni cálculo de hash; solo pasa
-  información. Eso reduce el código en kernel y su superficie de fallos.
-- Si se implementa cifrado del canal, la clave debe derivarse del token del
-  proceso conectado, no guardarse en un archivo.
+- The port only accepts `SYSTEM`; the Windows service runs under that account.
+  The diagnostic console requires administrator privileges.
+- `HELLO` includes the PID and process path; the driver verifies that the PID
+  matches the token of the connected endpoint and rejects unauthorized clients.
+- Messages carry *magic*, version and length: a process writing arbitrary bytes
+  to the port cannot fabricate a verdict without the ACL.
+- The driver performs no file I/O or hashing; it only passes information. This
+  reduces kernel code and its failure surface.
+- If channel encryption is implemented, the key must be derived from the
+  connected process's token, not stored in a file.
 
-## 7. Firma y distribución
+## 7. Signing and distribution
 
-Un driver de kernel **no** se puede firmar solo con el certificado EV/OV del
-exe: desde Windows 10 1607, los drivers nuevos deben pasar por el portal de
-Windows Hardware Dev Center. El EV es necesario para crear la cuenta del
-programa; después:
+A kernel driver **cannot** be signed with only the exe's EV/OV certificate:
+since Windows 10 1607, new drivers must go through the Windows Hardware Dev
+Center portal. EV is required to create the program account; after that:
 
-1. Desarrollar con WDK y probar con *test signing* en una VM aislada ( nunca
-   en producción).
-2. Ejecutar el *Hardware Lab Kit* (HLK) para las versiones de Windows
-   soportadas y reunir los logs.
-3. Enviar el paquete al portal para **WHQL** (producción) o *attestation
-   signing* (pruebas en cliente). El resultado es un `.sys` firmado por
-   Microsoft o un catálogo aceptado por Code Integrity.
-4. Instalar con un INF/catálogo firmado, nunca con `sc create` de un binario
-   sin firmar. Verificar con `Get-AuthenticodeSignature` y los eventos de
+1. Develop with the WDK and test with *test signing* in an isolated VM (never in
+   production).
+2. Run the *Hardware Lab Kit* (HLK) for the supported Windows versions and
+   collect the logs.
+3. Submit the package to the portal for **WHQL** (production) or *attestation
+   signing* (customer testing). The result is a `.sys` signed by Microsoft or a
+   catalog accepted by Code Integrity.
+4. Install with a signed INF/catalog, never with `sc create` on an unsigned
+   binary. Verify with `Get-AuthenticodeSignature` and the events in
    `Microsoft-Windows-CodeIntegrity/Operational`.
 
-Esto es una barrera externa importante: añade WDK/C++, HLK, cuenta de hardware
-y firma de Microsoft. No puede hacerse desde este repositorio Python.
+This is a major external barrier: it adds WDK/C++, HLK, a hardware account and
+Microsoft signing. It cannot be done from this Python repository.
 
-## 8. Plan de pruebas y evidencia
+## 8. Test plan and evidence
 
-- **VM aislada** con Versiones de Windows objetivo, Secure Boot activado y
+- **Isolated VM** with the target Windows versions, Secure Boot enabled and
   Driver Verifier (`/standard`).
-- HLK completo y sin fallos; captura de logs y del paquete enviado al portal.
-- EICAR y marcadores sintéticos: crear, ejecutar y renombrar; comprobar que el
-  veredicto llega antes de la ejecución en modo `enforce`.
-- Estrés: miles de archivos y procesos concurrentes; medir pérdidas de
-  mensajes, latencia p99 y ausencia de deadlocks.
-- Resiliencia: matar el proceso de usuario y reconectar; el driver debe degradar
-  según la política y nunca dejar el sistema sin I/O.
-- Auto-protección: intentar terminar el servicio y borrar la home desde otro
-  proceso del mismo usuario; revisar `audit.jsonl`.
-- Falsos positivos: ejecutar el benchmark y la suite de tests; revisar que las
-  exclusiones evitan auto-detección.
-- Recuperación: desinstalar el filtro y confirmar que el monitor de modo
-  usuario sigue funcionando.
+- Full HLK run with no failures; capture the logs and the package submitted to
+  the portal.
+- EICAR and synthetic markers: create, execute and rename; verify that the
+  verdict arrives before execution in `enforce` mode.
+- Stress: thousands of concurrent files and processes; measure message losses,
+  p99 latency and the absence of deadlocks.
+- Resilience: kill the user process and reconnect; the driver must degrade
+  according to policy and never leave the system without I/O.
+- Self-protection: attempt to terminate the service and delete the home from
+  another process of the same user; review `audit.jsonl`.
+- False positives: run the benchmark and the test suite; check that exclusions
+  prevent self-detection.
+- Recovery: uninstall the filter and confirm that the user-mode monitor still
+  works.
 
-## 9. Riesgos abiertos
+## 9. Open risks
 
-- Un bug en el driver puede causar BSOD; por eso el desarrollo exige VM,
-  Driver Verifier y firma WHQL antes de cualquier despliegue.
-- Bloquear en la ruta de `CREATE` puede provocar deadlocks si el análisis
-  intenta abrir el mismo archivo; el diseño propuesto evita E/S en kernel, pero
-  debe validarse con pruebas de estrés.
-- La *altitude* y las reglas de auto-protección requieren coordinación con el
-  administrador del equipo; una mala combinación con otros antivirus puede
-  interferir.
-- Incluso con filtro, un administrador puede desactivarlo: el modelo de
-  amenazas de `THREAT_MODEL.md` sigue siendo válido.
+- A bug in the driver can cause a BSOD; hence development requires a VM, Driver
+  Verifier and WHQL signing before any deployment.
+- Blocking in the `CREATE` path can cause deadlocks if analysis tries to open
+  the same file; the proposed design avoids I/O in the kernel, but it must be
+  validated with stress tests.
+- The *altitude* and self-protection rules require coordination with the machine
+  administrator; a bad combination with other antivirus products may interfere.
+- Even with a filter, an administrator can disable it: the threat model in
+  `THREAT_MODEL.md` remains valid.
 
-## Referencias
+## References
 
 - FltMgr: `FltRegisterFilter`, `FltCreateCommunicationPort`, `FltSendMessage`,
   `FltBuildDefaultSecurityDescriptor` (WDK / `fltkernel.h`).
 - FltLib: `FilterConnectCommunicationPort`, `FilterGetMessage`,
   `FilterReplyMessage`, `FilterSendMessage` (`fltuser.h`, `FltLib.dll`).
-- *Driver Signing Policy* y WHCP: documentación de Microsoft Hardware Dev
-  Center.
-- Alturas de filtros del sistema de archivos: documentación de Filter Manager
-  (rango anti-virus 320000–329999).
+- *Driver Signing Policy* and WHCP: Microsoft Hardware Dev Center documentation.
+- File system filter altitudes: Filter Manager documentation (anti-virus range
+  320000–329999).

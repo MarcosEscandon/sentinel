@@ -8,14 +8,14 @@ def test_csv_import(tmp_path):
     source = tmp_path / "feed.csv"
     source.write_text(
         "type,value,severity,description,id\n"
-        f"sha256,{'a' * 64},high,Prueba,HASH-1\n"
+        f"sha256,{'a' * 64},high,Test,HASH-1\n"
         "filename,.*\\.scr$,medium,SCR,FN-1\n"
-        "content,MARCADOR,low,Contenido,CT-1\n",
+        "content,MARKER,low,Content,CT-1\n",
         encoding="utf-8",
     )
     target = tmp_path / "signatures.json"
 
-    report = import_feed(source, target, source="proveedor")
+    report = import_feed(source, target, source="provider")
 
     assert report.added_hashes == 1
     assert report.added_filenames == 1
@@ -25,7 +25,7 @@ def test_csv_import(tmp_path):
     assert database.revision == 1
     assert "a" * 64 in database.hashes
 
-    again = import_feed(source, target, source="proveedor")
+    again = import_feed(source, target, source="provider")
     assert again.duplicates == 3
     assert again.added_hashes == again.added_filenames == again.added_content == 0
     assert again.revision == 2
@@ -40,7 +40,7 @@ def test_misp_import(tmp_path):
                     "Attribute": [
                         {"type": "sha256", "value": "b" * 64, "comment": "misp hash"},
                         {"type": "filename", "value": ".*\\.exe$", "comment": "exe"},
-                        {"type": "regexp", "value": "MARCADOR", "comment": "contenido"},
+                        {"type": "regexp", "value": "MARKER", "comment": "content"},
                     ]
                 }
             }
@@ -55,7 +55,7 @@ def test_misp_import(tmp_path):
 
 def test_plain_hash_list(tmp_path):
     source = tmp_path / "hashes.txt"
-    source.write_text(f"# comentario\n{'c' * 64}\n\nno-es-un-hash\n", encoding="utf-8")
+    source.write_text(f"# comment\n{'c' * 64}\n\nnot-a-hash\n", encoding="utf-8")
     target = tmp_path / "signatures.json"
     report = import_feed(source, target)
     assert report.fmt == "hashes"

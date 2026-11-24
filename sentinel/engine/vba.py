@@ -1,9 +1,10 @@
-"""Extracción y análisis del código fuente VBA de proyectos MS-OVBA.
+"""Extraction and analysis of VBA source code from MS-OVBA projects.
 
-Este módulo no añade dependencias: implementa el contenedor comprimido descrito
-en [MS-OVBA] 2.4.1, un parser mínimo del stream ``dir`` y reglas heurísticas
-sobre el código fuente recuperado. El análisis es de solo lectura y complementa
-la detección genérica de macros de :func:`~sentinel.engine.containers.find_macro_entries`.
+This module adds no dependencies: it implements the compressed container
+described in [MS-OVBA] 2.4.1, a minimal parser for the ``dir`` stream, and
+heuristic rules over the recovered source code. The analysis is read-only and
+complements generic macro detection in
+:func:`~sentinel.engine.containers.find_macro_entries`.
 """
 
 from __future__ import annotations
@@ -19,11 +20,11 @@ from .containers import ContainerEntry, ContainerError
 from .ole import unpack_ole
 
 _CHUNK_SIZE = 4096
-"""Tamaño máximo, en bytes, de cada chunk descomprimido (MS-OVBA 2.4.1.1.3)."""
+"""Maximum size, in bytes, of each decompressed chunk (MS-OVBA 2.4.1.1.3)."""
 
 _CONTAINER_SIGNATURE = 0x01
 _CHUNK_SIGNATURE = 0b011
-"""Firma de 3 bits de la cabecera de chunk; el bit restante es el flag de compresión."""
+"""3-bit signature of the chunk header; the remaining bit is the compression flag."""
 
 _RID_PROJECT_MODULES = 0x0040
 _RID_MODULE_NAME = 0x0019
@@ -41,30 +42,30 @@ _PERMISSIVE_CONFIG = ScanConfig(
     container_max_depth=1,
     container_max_ratio=10_000,
 )
-"""Límites amplios para leer los streams internos de un ``vbaProject.bin``."""
+"""Generous limits for reading the internal streams of a ``vbaProject.bin``."""
 
 
 # ---------------------------------------------------------------------------
-# Descompresión MS-OVBA
+# MS-OVBA decompression
 # ---------------------------------------------------------------------------
 
 
 def _copy_token_bit_count(position: int) -> int:
-    """Devuelve los bits del token usados para la distancia (4..12).
+    """Returns the number of token bits used for the distance (4..12).
 
-    MS-OVBA calcula ``BitCount = max(ceil(log2(position)), 4)``: los bits altos
-    del token codifican la distancia (el grupo que incluye la máscara 0x7000) y
-    los bajos codifican la longitud. El valor se recalcula para cada token.
+    MS-OVBA computes ``BitCount = max(ceil(log2(position)), 4)``: the high bits
+    of the token encode the distance (the group including the 0x7000 mask) and
+    the low bits encode the length. The value is recalculated for each token.
     """
     bits = max(0, position - 1).bit_length()
     return min(max(bits, 4), 12)
 
 
 def _decompress_chunk(data: bytes, pos: int, end: int, output: bytearray) -> int:
-    """Descomprime un chunk comprimido y devuelve la posición siguiente.
+    """Decompresses a compressed chunk and returns the next position.
 
-    Cada ``FlagByte`` rige hasta ocho tokens: bit a 0 es un literal de un byte y
-    bit a 1 es un ``CopyToken`` de dos bytes con longitud y distancia.
+    Each ``FlagByte`` governs up to eight tokens: a 0 bit is a one-byte literal
+    and a 1 bit is a two-byte ``CopyToken`` with length and distance.
     """
     chunk_start = len(output)
     while pos < end:
@@ -75,13 +76,13 @@ def _decompress_chunk(data: bytes, pos: int, end: int, output: bytearray) -> int
                 return pos
             position = len(output) - chunk_start
             if position >= _CHUNK_SIZE:
-                raise ValueError("chunk VBA excede los 4096 bytes descomprimidos")
+                raise ValueError("VBA chunk exceeds 4096 decompressed bytes")
             if not (flags >> bit) & 1:
                 output.append(data[pos])
                 pos += 1
                 continue
             if end - pos < 2:
-                raise ValueError("CopyToken VBA truncado al final del chunk")
+                raise ValueError("VBA CopyToken truncated at end of chunk")
             token = struct.unpack_from("<H", data, pos)[0]
             pos += 2
             bit_count = _copy_token_bit_count(position)
@@ -90,29 +91,29 @@ def _decompress_chunk(data: bytes, pos: int, end: int, output: bytearray) -> int
             length = (token & length_mask) + 3
             offset = ((token & offset_mask) >> (16 - bit_count)) + 1
             if offset > position:
-                raise ValueError(f"distancia de copia VBA {offset} fuera del chunk")
+                raise ValueError(f"VBA copy distance {offset} outside chunk")
             if position + length > _CHUNK_SIZE:
-                raise ValueError("chunk VBA excede los 4096 bytes descomprimidos")
+                raise ValueError("VBA chunk exceeds 4096 decompressed bytes")
             source = len(output) - offset
-            # Copia byte a byte: la referencia puede solaparse con la salida (RLE).
+            # Copy byte by byte: the reference may overlap with the output (RLE).
             for index in range(length):
                 output.append(output[source + index])
     return pos
 
 
 def decompress(compressed: bytes) -> bytes:
-    """Descomprime un ``CompressedContainer`` MS-OVBA.
+    """Decompresses an MS-OVBA ``CompressedContainer``.
 
-    Comienza con la firma ``0x01`` y contiene chunks de hasta 4096 bytes. Cada
-    cabecera de 2 bytes codifica el tamaño (bits 0-11, tamaño total menos 3), la
-    firma ``0b011`` (bits 12-14) y el flag de compresión (bit 15). Los errores de
-    formato se informan con :class:`ValueError` y mensajes en español.
+    It starts with the signature ``0x01`` and contains chunks of up to 4096
+    bytes. Each 2-byte header encodes the size (bits 0-11, total size minus 3),
+    the signature ``0b011`` (bits 12-14), and the compression flag (bit 15).
+    Format errors are reported with :class:`ValueError` and clear messages.
     """
     if not compressed:
-        raise ValueError("contenedor VBA vacío: falta la firma 0x01")
+        raise ValueError("empty VBA container: missing signature 0x01")
     if compressed[0] != _CONTAINER_SIGNATURE:
         raise ValueError(
-            f"firma de contenedor VBA inválida: 0x{compressed[0]:02X} (esperado 0x01)"
+            f"invalid VBA container signature: 0x{compressed[0]:02X} (expected 0x01)"
         )
 
     output = bytearray()
@@ -120,12 +121,12 @@ def decompress(compressed: bytes) -> bytes:
     pos = 1
     while pos < total:
         if total - pos < 2:
-            raise ValueError("cabecera de chunk VBA truncada")
+            raise ValueError("truncated VBA chunk header")
         header = struct.unpack_from("<H", compressed, pos)[0]
         chunk_start = pos
         pos += 2
         if (header >> 12) & 0x07 != _CHUNK_SIGNATURE:
-            raise ValueError(f"firma de chunk VBA inválida: 0x{header:04X}")
+            raise ValueError(f"invalid VBA chunk signature: 0x{header:04X}")
         chunk_size = (header & 0x0FFF) + 3
         chunk_end = min(total, chunk_start + chunk_size)
         is_compressed = bool(header & 0x8000)
@@ -134,28 +135,28 @@ def decompress(compressed: bytes) -> bytes:
         if is_compressed:
             pos = _decompress_chunk(compressed, pos, chunk_end, output)
         else:
-            # RawChunk: 4096 bytes literales sin tokens.
+            # RawChunk: 4096 literal bytes without tokens.
             if chunk_end - pos != _CHUNK_SIZE:
                 raise ValueError(
-                    f"chunk VBA sin comprimir de {chunk_end - pos} bytes (esperado 4096)"
+                    f"uncompressed VBA chunk of {chunk_end - pos} bytes (expected 4096)"
                 )
             output.extend(compressed[pos : pos + _CHUNK_SIZE])
             pos = chunk_end
 
         produced = len(output) - produced_start
         if not 0 < produced <= _CHUNK_SIZE:
-            raise ValueError(f"chunk VBA produjo {produced} bytes (máximo 4096)")
+            raise ValueError(f"VBA chunk produced {produced} bytes (maximum 4096)")
     return bytes(output)
 
 
 # ---------------------------------------------------------------------------
-# Parser mínimo del stream `dir`
+# Minimal `dir` stream parser
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ModuleInfo:
-    """Nombre, stream de código y desplazamiento del texto de un módulo VBA."""
+    """Name, code stream, and text offset of a VBA module."""
 
     name: str
     stream: str = ""
@@ -164,21 +165,21 @@ class ModuleInfo:
 
 @dataclass(frozen=True)
 class ProjectInfo:
-    """Información mínima extraída del stream ``dir`` de MS-OVBA."""
+    """Minimal information extracted from the MS-OVBA ``dir`` stream."""
 
     modules: tuple[ModuleInfo, ...] = ()
 
     @property
     def by_stream(self) -> dict[str, ModuleInfo]:
-        """Mapa de nombre de stream (en minúsculas) a módulo."""
+        """Map from lowercase stream name to module."""
         return {item.stream.lower(): item for item in self.modules if item.stream}
 
 
 def _iter_dir_records(data: bytes) -> Iterator[tuple[int, bytes]]:
-    """Genera ``(id, carga útil)`` para los registros del stream ``dir``.
+    """Yields ``(id, payload)`` for records in the ``dir`` stream.
 
-    Se recurse en PROJECTMODULES (cuyo payload empieza con un contador de 2
-    bytes) y se detiene ante registros truncados, conservando lo ya leído.
+    It recurses into PROJECTMODULES (whose payload starts with a 2-byte count)
+    and stops at truncated records, preserving what has already been read.
     """
     pos = 0
     while pos + 6 <= len(data):
@@ -194,7 +195,7 @@ def _iter_dir_records(data: bytes) -> Iterator[tuple[int, bytes]]:
 
 
 def _sized_text(payload: bytes, *, utf16: bool = False) -> str:
-    """Decodifica un campo ``Size`` (4 bytes) seguido de su texto."""
+    """Decodes a ``Size`` field (4 bytes) followed by its text."""
     if len(payload) < 4:
         return ""
     size = struct.unpack_from("<I", payload, 0)[0]
@@ -205,11 +206,11 @@ def _sized_text(payload: bytes, *, utf16: bool = False) -> str:
 
 
 def _module_stream_name(payload: bytes) -> str:
-    """Extrae el nombre de stream de un registro MODULESTREAMNAME (0x001A)."""
+    """Extracts the stream name from a MODULESTREAMNAME record (0x001A)."""
     ascii_name = _sized_text(payload)
     if len(payload) < 4:
         return ascii_name
-    # Nombre ASCII, Reserved (0x0032) y la variante UTF-16 incrustada.
+    # ASCII name, Reserved (0x0032), and the embedded UTF-16 variant.
     size = struct.unpack_from("<I", payload, 0)[0]
     unicode_at = 4 + size + 2
     if unicode_at + 4 <= len(payload):
@@ -221,11 +222,10 @@ def _module_stream_name(payload: bytes) -> str:
 
 
 def parse_project_dir(data: bytes) -> ProjectInfo:
-    """Parsea los registros del stream ``dir`` y devuelve los módulos VBA.
+    """Parses records in the ``dir`` stream and returns the VBA modules.
 
-    Solo se interpretan los registros de nombre de módulo (0x0019/0x0047),
-    nombre de stream (0x001A) y offset de texto (0x0031). Los campos
-    desconocidos se ignoran de forma segura.
+    Only module name (0x0019/0x0047), stream name (0x001A), and text offset
+    (0x0031) records are interpreted. Unknown fields are safely ignored.
     """
     modules: list[ModuleInfo] = []
     for record_id, payload in _iter_dir_records(data):
@@ -247,18 +247,18 @@ def parse_project_dir(data: bytes) -> ProjectInfo:
 
 
 # ---------------------------------------------------------------------------
-# Extracción de código fuente
+# Source code extraction
 # ---------------------------------------------------------------------------
 
 
 def _is_vba_project(path: str) -> bool:
-    """Comprueba si la ruta termina en ``vbaProject.bin`` (insensible a mayúsculas)."""
+    """Checks whether the path ends in ``vbaProject.bin`` (case-insensitive)."""
     inner = path.replace("\\", "/").lower().rsplit("!/", 1)[-1]
     return inner.endswith("vbaproject.bin")
 
 
 def _extract_project(entry: ContainerEntry) -> dict[str, str]:
-    """Extrae los módulos de un único proyecto VBA."""
+    """Extracts the modules of a single VBA project."""
     children = unpack_ole(entry.data, entry.path or "vbaProject.bin", _PERMISSIVE_CONFIG)
     streams: dict[str, bytes] = {}
     for child in children:
@@ -277,7 +277,7 @@ def _extract_project(entry: ContainerEntry) -> dict[str, str]:
         try:
             code = decompress(raw_code)
         except ValueError:
-            continue  # Stream de código corrupto: se conservan los demás módulos.
+            continue  # Corrupt code stream: keep the other modules.
         if module.offset:
             code = code[module.offset :]
         sources[module.name or module.stream] = code.decode("cp1252", errors="replace")
@@ -285,10 +285,10 @@ def _extract_project(entry: ContainerEntry) -> dict[str, str]:
 
 
 def extract_sources(entries: Iterable[ContainerEntry]) -> dict[str, str]:
-    """Devuelve ``{nombre_del_módulo: código_VBA}`` para los proyectos encontrados.
+    """Returns ``{module_name: vba_code}`` for the projects found.
 
-    Nunca propaga errores al llamador: los proyectos ilegibles se omiten y se
-    devuelve todo el código que se haya podido recuperar de los demás.
+    Errors are never propagated to the caller: unreadable projects are skipped
+    and all code recovered from the other projects is returned.
     """
     sources: dict[str, str] = {}
     for entry in entries:
@@ -302,13 +302,13 @@ def extract_sources(entries: Iterable[ContainerEntry]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Análisis de código fuente
+# Source code analysis
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class PatternRule:
-    """Regla regex con identificador, severidad y descripción."""
+    """Regex rule with an identifier, severity, and description."""
 
     rule_id: str
     pattern: re.Pattern[str]
@@ -317,7 +317,7 @@ class PatternRule:
 
 
 def _rule(rule_id: str, expression: str, severity: Severity, description: str) -> PatternRule:
-    """Compila una expresión regular insensible a mayúsculas."""
+    """Compiles a case-insensitive regular expression."""
     return PatternRule(rule_id, re.compile(expression, re.IGNORECASE), severity, description)
 
 
@@ -327,72 +327,72 @@ SUSPICIOUS_PATTERNS: tuple[PatternRule, ...] = (
         r"\b(?:autoopen|autoexec|autoclose|autonew|autoexit|auto_open|document_open|"
         r"document_change|workbook_open|workbook_activate|workbook_beforeclose)\b",
         Severity.MEDIUM,
-        "Macro que se ejecuta automáticamente al abrir o cerrar el documento",
+        "Macro that runs automatically when the document is opened or closed",
     ),
     _rule(
         "VBA-OBFUSCATION",
         r"(?:\bchr(?:b|w)?\$?\s*\([^()]*\)\s*(?:&|\+)\s*){3,}\bchr(?:b|w)?\$?\s*\(",
         Severity.HIGH,
-        "Concatenación excesiva de Chr para construir cadenas ofuscadas",
+        "Excessive Chr concatenation to build obfuscated strings",
     ),
     _rule(
         "VBA-CREATEOBJECT",
         r"\bcreateobject\s*\(",
         Severity.MEDIUM,
-        "Creación de un objeto COM desde VBA",
+        "Creation of a COM object from VBA",
     ),
     _rule(
         "VBA-SHELL",
         r"(?:\bshell\b|\.run\s*\()",
         Severity.HIGH,
-        "Ejecución de comandos o procesos desde VBA",
+        "Execution of commands or processes from VBA",
     ),
     _rule(
         "VBA-CALLBYNAME",
         r"\bcallbyname\s*\(",
         Severity.MEDIUM,
-        "Llamada dinámica a miembros para ocultar el código ejecutado",
+        "Dynamic member call to hide the executed code",
     ),
     _rule(
         "VBA-CHR",
         r"\bchr(?:b|w)?\$?\s*\(",
         Severity.MEDIUM,
-        "Uso de Chr para construir caracteres de forma indirecta",
+        "Use of Chr to build characters indirectly",
     ),
     _rule(
         "VBA-POWERSHELL",
         r"\bpowershell(?:\.exe)?\b",
         Severity.HIGH,
-        "Referencia a PowerShell en el código VBA",
+        "Reference to PowerShell in the VBA code",
     ),
     _rule(
         "VBA-CMDEXE",
         r"\bcmd(?:\.exe)?\b",
         Severity.HIGH,
-        "Referencia al intérprete de comandos de Windows",
+        "Reference to the Windows command interpreter",
     ),
     _rule(
         "VBA-DOWNLOAD",
         r"\b(?:urldownloadtofile(?:a|w)?|msxml2\.xmlhttp|microsoft\.xmlhttp|net\.webclient)\b",
         Severity.HIGH,
-        "Descarga de contenido remoto desde VBA",
+        "Download of remote content from VBA",
     ),
     _rule(
         "VBA-INJECT",
         r"\b(?:virtualalloc(?:ex)?|rtlmovememory|writeprocessmemory|virtualprotect|"
         r"createremotethread)\b",
         Severity.HIGH,
-        "Funciones de inyección o ejecución de código en memoria",
+        "Functions for injection or in-memory code execution",
     ),
 )
-"""Secuencias regex sospechosas aplicadas al código fuente VBA."""
+"""Suspicious regex sequences applied to VBA source code."""
 
 
 def analyze_sources(sources: dict[str, str]) -> list[RuleHit]:
-    """Aplica :data:`SUSPICIOUS_PATTERNS` al código de cada módulo.
+    """Applies :data:`SUSPICIOUS_PATTERNS` to each module's code.
 
-    Los impactos se deduplican por regla e indicador, se ordenan por identificador
-    y la coincidencia se trunca a 120 caracteres dentro del indicador.
+    Hits are deduplicated by rule and indicator, sorted by identifier, and the
+    matched text is truncated to 120 characters within the indicator.
     """
     hits: list[RuleHit] = []
     seen: set[tuple[str, str]] = set()
@@ -421,7 +421,7 @@ def analyze_sources(sources: dict[str, str]) -> list[RuleHit]:
 
 
 def analyze_macro_entries(entries: Iterable[ContainerEntry]) -> list[RuleHit]:
-    """Extrae el código VBA de las entradas y aplica las reglas sospechosas."""
+    """Extracts VBA code from entries and applies the suspicious rules."""
     return analyze_sources(extract_sources(entries))
 
 

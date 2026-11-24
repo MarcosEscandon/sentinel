@@ -29,8 +29,8 @@ def test_scan_result_ordering_and_summary():
     result = ScanResult(roots=["C:/tmp"], started_at="2026-01-01T00:00:00+00:00",
                         finished_at="2026-01-01T00:00:02+00:00")
     result.findings = [
-        Finding("a", "R-LOW", Detection.HEURISTIC, Severity.LOW, "baja"),
-        Finding("b", "R-HIGH", Detection.HASH, Severity.HIGH, "alta"),
+        Finding("a", "R-LOW", Detection.HEURISTIC, Severity.LOW, "low"),
+        Finding("b", "R-HIGH", Detection.HASH, Severity.HIGH, "high"),
     ]
     assert result.max_severity is Severity.HIGH
     assert [item.rule_id for item in result.sorted_findings()] == ["R-HIGH", "R-LOW"]

@@ -12,9 +12,9 @@ def test_match_hash(sample_db):
 
 
 def test_match_filename_and_content(sample_db):
-    assert sample_db.match_filename("archivo.bad")[0].rule_id == "NAME-TEST"
-    assert sample_db.match_content(b"xxx MARCADOR yyy", 15)[0].rule_id == "CONTENT-TEST"
-    assert sample_db.match_content(b"limpio", 6) == []
+    assert sample_db.match_filename("file.bad")[0].rule_id == "NAME-TEST"
+    assert sample_db.match_content(b"xxx MARKER yyy", 15)[0].rule_id == "CONTENT-TEST"
+    assert sample_db.match_content(b"clean", 6) == []
 
 
 def test_content_respects_max_size():
@@ -70,7 +70,7 @@ def test_regex_timeout_is_reported():
                     "id": "REDOS",
                     "pattern": r"(a+)+$",
                     "severity": "low",
-                    "description": "patrón con backtracking",
+                    "description": "pattern with backtracking",
                 }
             ]
         }

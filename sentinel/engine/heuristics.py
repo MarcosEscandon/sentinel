@@ -1,9 +1,9 @@
-"""Heurísticas de detección.
+"""Detection heuristics.
 
-No sustituyen a las firmas: buscan propiedades sospechosas de un archivo
-(entropía elevada, doble extensión, imports típicos de inyección, secciones
-empaquetadas, etc.). El objetivo es priorizar archivos para análisis posterior,
-no declararlos maliciosos de forma automática.
+These do not replace signatures: they look for suspicious file properties
+(high entropy, double extensions, imports typical of injection, packed
+sections, etc.). The goal is to prioritize files for further analysis, not to
+declare them malicious automatically.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from pathlib import Path
 from ..config import ScanConfig
 from ..core.models import Detection, RuleHit, Severity
 
-# APIs legítimas en muchos programas, pero muy habituales en cargadores y
-# inyectores. Se usan como señal de peso, nunca como prueba de malware.
+# APIs that are legitimate in many programs but very common in loaders and
+# injectors. They are used as weighted signals, never as proof of malware.
 SUSPICIOUS_IMPORTS = frozenset(
     {
         "virtualallocex",
@@ -107,7 +107,7 @@ DOUBLE_EXTENSION = re.compile(
 
 
 def shannon_entropy(data: bytes) -> float:
-    """Entropía de Shannon de una secuencia de bytes, en bits por byte."""
+    """Shannon entropy of a byte sequence, in bits per byte."""
     if not data:
         return 0.0
     counts = Counter(data)
@@ -121,7 +121,7 @@ def shannon_entropy(data: bytes) -> float:
 
 @dataclass
 class PEInfo:
-    """Información extraída de la cabecera de un ejecutable PE."""
+    """Information extracted from the header of a PE executable."""
 
     is_pe: bool = False
     machine: int = 0
@@ -163,21 +163,21 @@ def _cstring(data: bytes, offset: int, limit: int = 4096) -> str:
 
 
 def analyze_pe(data: bytes) -> PEInfo:
-    """Analiza una cabecera PE con un parser mínimo y sin dependencias.
+    """Analyzes a PE header with a minimal, dependency-free parser.
 
-    Nunca lanza excepciones por datos malformados: los problemas se recogen
-    en ``PEInfo.notes`` para que el escáner pueda seguir adelante.
+    It never raises exceptions for malformed data: issues are collected in
+    ``PEInfo.notes`` so the scanner can continue.
     """
     if len(data) < 0x40 or data[:2] != b"MZ":
         return PEInfo()
     try:
         pe_offset = _u32(data, 0x3C)
     except struct.error:
-        return PEInfo(notes=("e_lfanew ilegible",))
+        return PEInfo(notes=("unreadable e_lfanew",))
     if pe_offset <= 0 or pe_offset + 24 > len(data):
-        return PEInfo(notes=("e_lfanew fuera de rango",))
+        return PEInfo(notes=("e_lfanew out of range",))
     if data[pe_offset : pe_offset + 4] != b"PE\x00\x00":
-        return PEInfo(notes=("firma PE ausente",))
+        return PEInfo(notes=("PE signature missing",))
 
     notes: list[str] = []
     coff = pe_offset + 4
@@ -186,7 +186,7 @@ def analyze_pe(data: bytes) -> PEInfo:
     )
     optional = coff + 20
     if optional + 2 > len(data):
-        return PEInfo(is_pe=True, machine=machine, notes=("cabecera opcional truncada",))
+        return PEInfo(is_pe=True, machine=machine, notes=("truncated optional header",))
     magic = _u16(data, optional)
     if magic == 0x10B:
         bitness = 32
@@ -198,12 +198,12 @@ def analyze_pe(data: bytes) -> PEInfo:
         count_offset = optional + 108
     else:
         return PEInfo(
-            is_pe=True, machine=machine, notes=(f"magic de cabecera opcional desconocido {magic:#x}",)
+            is_pe=True, machine=machine, notes=(f"unknown optional header magic {magic:#x}",)
         )
 
     section_table = optional + optional_size
     if section_table > len(data):
-        return PEInfo(is_pe=True, machine=machine, notes=("tabla de secciones fuera de rango",))
+        return PEInfo(is_pe=True, machine=machine, notes=("section table out of range",))
 
     sections: list[str] = []
     section_ranges: list[tuple[int, int, int, int]] = []
@@ -212,7 +212,7 @@ def analyze_pe(data: bytes) -> PEInfo:
     for index in range(min(section_count, 96)):
         offset = section_table + index * 40
         if offset + 40 > len(data):
-            notes.append("sección truncada")
+            notes.append("truncated section")
             break
         name = _cstring(data, offset, 8)
         virtual_size, virtual_address, raw_size, raw_offset = struct.unpack_from(
@@ -244,7 +244,7 @@ def analyze_pe(data: bytes) -> PEInfo:
             if import_rva and import_size:
                 cursor = rva_to_offset(import_rva)
                 if cursor is None:
-                    notes.append("directorio de imports no resoluble")
+                    notes.append("unresolvable imports directory")
                 else:
                     step = 8 if bitness == 64 else 4
                     seen = 0
@@ -307,7 +307,7 @@ def analyze_pe(data: bytes) -> PEInfo:
 
 @dataclass
 class HeuristicAssessment:
-    """Salida de las heurísticas para un archivo."""
+    """Heuristic output for a file."""
 
     hits: list[RuleHit] = field(default_factory=list)
     score: float = 0.0
@@ -315,7 +315,7 @@ class HeuristicAssessment:
 
 
 class HeuristicEngine:
-    """Aplica reglas heurísticas configurables a la muestra de un archivo."""
+    """Applies configurable heuristic rules to a file sample."""
 
     def __init__(self, config: ScanConfig | None = None) -> None:
         self.config = config or ScanConfig()
@@ -331,7 +331,7 @@ class HeuristicEngine:
                     rule_id="HEUR-DOUBLE-EXT",
                     detection=Detection.HEURISTIC,
                     severity=Severity.MEDIUM,
-                    description="Doble extensión: el nombre oculta un tipo ejecutable",
+                    description="Double extension: the name hides an executable type",
                     indicators=(name,),
                 )
             )
@@ -345,7 +345,7 @@ class HeuristicEngine:
                         rule_id="HEUR-ENTROPY",
                         detection=Detection.HEURISTIC,
                         severity=Severity.LOW,
-                        description=f"Entropía elevada ({entropy:.2f} bits/byte)",
+                        description=f"High entropy ({entropy:.2f} bits/byte)",
                         indicators=(f"entropy={entropy:.3f}",),
                     )
                 )
@@ -361,7 +361,7 @@ class HeuristicEngine:
                         rule_id="HEUR-PE-IMPORTS",
                         detection=Detection.HEURISTIC,
                         severity=Severity.HIGH if len(info.suspicious_imports) >= 2 else Severity.MEDIUM,
-                        description="Imports asociados a inyección o descarga",
+                        description="Imports associated with injection or downloading",
                         indicators=tuple(info.suspicious_imports[:12]),
                     )
                 )
@@ -378,7 +378,7 @@ class HeuristicEngine:
                         rule_id="HEUR-PE-PACKED",
                         detection=Detection.HEURISTIC,
                         severity=Severity.MEDIUM,
-                        description="Secciones típicas de empaquetador/protector",
+                        description="Sections typical of a packer/protector",
                         indicators=tuple(packed[:8]),
                     )
                 )
@@ -390,7 +390,7 @@ class HeuristicEngine:
                         rule_id="HEUR-PE-OVERLAY",
                         detection=Detection.HEURISTIC,
                         severity=Severity.LOW,
-                        description=f"Sobrepósito PE grande ({info.overlay_size} bytes)",
+                        description=f"Large PE overlay ({info.overlay_size} bytes)",
                         indicators=(f"overlay={info.overlay_size}",),
                     )
                 )
@@ -409,12 +409,12 @@ class HeuristicEngine:
                     rule_id="HEUR-SCORE",
                     detection=Detection.HEURISTIC,
                     severity=severity,
-                    description=f"Puntuación heurística acumulada: {result.score:.1f}",
+                    description=f"Cumulative heuristic score: {result.score:.1f}",
                     indicators=tuple(hit.rule_id for hit in result.hits),
                 )
             )
         return result
 
 
-# Permite inyectar un analizador alternativo en pruebas o plugins.
+# Allows injecting an alternative analyzer in tests or plugins.
 PEAnalyzer = Callable[[bytes], PEInfo]

@@ -1,9 +1,9 @@
-"""Interfaz gráfica mínima de Sentinel construida con tkinter (stdlib).
+"""Minimal Sentinel GUI built with tkinter (stdlib).
 
-La ventana ofrece un escáner que no bloquea la interfaz, un registro de
-resultados y la gestión básica de la cuarentena. La lógica importante vive en
-métodos públicos (``scan_path``, ``format_summary``, ``refresh_quarantine``)
-que pueden usarse sin abrir ventana mediante ``SentinelGUI(headless=True)``.
+The window provides a non-blocking scanner, a results log, and basic
+quarantine management. The core logic lives in public methods
+(``scan_path``, ``format_summary``, ``refresh_quarantine``) that can be used
+without opening a window via ``SentinelGUI(headless=True)``.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from .core.quarantine import Quarantine, QuarantineEntry, QuarantineIntegrityErr
 from .engine.scanner import Scanner, summarize
 from .engine.signatures import SignatureDatabase
 
-if TYPE_CHECKING:  # Las anotaciones no requieren Tk en modo headless.
+if TYPE_CHECKING:  # Annotations do not require Tk in headless mode.
     from tkinter import ttk
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -36,7 +36,7 @@ POLL_INTERVAL_MS = 100
 
 
 def _human_size(size: int) -> str:
-    """Formatea bytes con unidades legibles para el resumen."""
+    """Format bytes with human-readable units for the summary."""
     value = float(size)
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
         if value < 1024 or unit == "TiB":
@@ -46,21 +46,21 @@ def _human_size(size: int) -> str:
 
 
 class SentinelGUI:
-    """Ventana principal de Sentinel.
+    """Main Sentinel window.
 
-    Parámetros
+    Parameters
     ----------
     home:
-        Directorio de datos (historial, cuarentena y auditoría). Por defecto
-        usa ``$SENTINEL_HOME`` o ``~/.sentinel``, igual que la CLI.
+        Data directory (history, quarantine, and audit log). Defaults to
+        ``$SENTINEL_HOME`` or ``~/.sentinel``, just like the CLI.
     signatures:
-        Ruta a ``signatures.json``; por defecto la incluida en el paquete.
+        Path to ``signatures.json``; defaults to the bundled copy.
     root:
-        Ventana Tk ya creada (opcional, útil para pruebas).
+        An existing Tk window (optional, useful for tests).
     headless:
-        Si es ``True`` no se crea ninguna ventana: solo se inicializa la lógica.
+        If ``True``, no window is created: only the logic is initialized.
     config:
-        Configuración del escáner; por defecto ``ScanConfig()``.
+        Scanner configuration; defaults to ``ScanConfig()``.
     """
 
     def __init__(
@@ -86,10 +86,10 @@ class SentinelGUI:
         self._scanning = False
         self._last_result: ScanResult | None = None
         self._last_scan_id: int | None = None
-        self.status = "Listo"
+        self.status = "Ready"
         self.logs: list[str] = []
 
-        # Referencias a widgets: se quedan en None en modo headless.
+        # Widget references remain None in headless mode.
         self.root = root
         self.path_var: Any | None = None
         self.status_var: Any | None = None
@@ -105,7 +105,7 @@ class SentinelGUI:
             self._build_window()
 
     def _build_window(self) -> None:
-        """Crea los widgets de la ventana principal."""
+        """Create the widgets of the main window."""
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
 
@@ -128,17 +128,17 @@ class SentinelGUI:
 
         controls = ttk.Frame(main)
         controls.pack(fill="x", pady=(0, 8))
-        ttk.Label(controls, text="Ruta:").pack(side="left")
+        ttk.Label(controls, text="Path:").pack(side="left")
         ttk.Entry(controls, textvariable=self.path_var).pack(
             side="left", fill="x", expand=True, padx=6
         )
-        ttk.Button(controls, text="Examinar", command=self.browse_path).pack(side="left")
-        ttk.Button(controls, text="Escanear", command=self.start_scan).pack(
+        ttk.Button(controls, text="Browse", command=self.browse_path).pack(side="left")
+        ttk.Button(controls, text="Scan", command=self.start_scan).pack(
             side="left", padx=(6, 0)
         )
 
-        # ttk no incluye un widget Text: se usa tk.Text dentro de un marco ttk.
-        log_frame = ttk.LabelFrame(main, text="Registro de escaneo", padding=6)
+        # ttk has no Text widget: use tk.Text inside a ttk frame.
+        log_frame = ttk.LabelFrame(main, text="Scan log", padding=6)
         log_frame.pack(fill="both", expand=True)
         self.log_text = tk.Text(log_frame, height=14, wrap="word", state="disabled")
         scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
@@ -146,16 +146,16 @@ class SentinelGUI:
         self.log_text.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-        q_frame = ttk.LabelFrame(main, text="Cuarentena", padding=6)
+        q_frame = ttk.LabelFrame(main, text="Quarantine", padding=6)
         q_frame.pack(fill="both", expand=True, pady=(8, 0))
-        columns = ("id", "nombre", "origen", "motivo", "fecha")
+        columns = ("id", "name", "source", "motivo", "fecha")
         self.tree = ttk.Treeview(q_frame, columns=columns, show="headings", height=8)
         headings = {
             "id": ("ID", 150),
-            "nombre": ("Nombre", 160),
-            "origen": ("Origen", 260),
-            "motivo": ("Motivo", 130),
-            "fecha": ("Fecha", 160),
+            "name": ("Name", 160),
+            "source": ("Origin", 260),
+            "motivo": ("Reason", 130),
+            "fecha": ("Date", 160),
         }
         for key, (label, width) in headings.items():
             self.tree.heading(key, text=label)
@@ -164,51 +164,51 @@ class SentinelGUI:
 
         actions = ttk.Frame(q_frame)
         actions.pack(fill="x", pady=(6, 0))
-        ttk.Button(actions, text="Actualizar", command=self.refresh_quarantine).pack(
+        ttk.Button(actions, text="Refresh", command=self.refresh_quarantine).pack(
             side="left"
         )
-        ttk.Button(actions, text="Restaurar", command=self.restore_selected).pack(
+        ttk.Button(actions, text="Restore", command=self.restore_selected).pack(
             side="left", padx=(6, 0)
         )
-        ttk.Button(actions, text="Eliminar", command=self.delete_selected).pack(
+        ttk.Button(actions, text="Delete", command=self.delete_selected).pack(
             side="left", padx=(6, 0)
         )
 
         ttk.Label(main, textvariable=self.status_var, anchor="w").pack(fill="x", pady=(8, 0))
-        self._append_log(f"Sentinel {__version__} listo. Firmas: {self.signatures_path}")
+        self._append_log(f"Sentinel {__version__} ready. Signatures: {self.signatures_path}")
         self.refresh_quarantine()
 
     def run(self) -> None:
-        """Inicia el bucle de eventos de Tk (no hace nada en modo headless)."""
+        """Start the Tk event loop (does nothing in headless mode)."""
         if self.root is not None:
             self.root.mainloop()
 
     def shutdown(self) -> None:
-        """Cierra la ventana si esta instancia fue quien la creó."""
+        """Close the window if this instance created it."""
         if self.root is not None and self._owns_root:
             self.root.destroy()
             self.root = None
 
     def browse_path(self) -> None:
-        """Selecciona un directorio mediante el diálogo nativo."""
+        """Select a directory using the native dialog."""
         if self._dialogs is None:
             return
-        chosen = self._dialogs.askdirectory(title="Selecciona la ruta a escanear")
+        chosen = self._dialogs.askdirectory(title="Select the path to scan")
         if chosen and self.path_var is not None:
             self.path_var.set(chosen)
 
     def start_scan(self) -> None:
-        """Lanza un escaneo en segundo plano sin bloquear la interfaz."""
+        """Start a background scan without blocking the interface."""
         path = self._current_path()
         if not path:
-            self._append_log("Indica una ruta válida antes de escanear.")
+            self._append_log("Enter a valid path before scanning.")
             return
         if self._scanning:
-            self._append_log("Ya hay un escaneo en curso.")
+            self._append_log("A scan is already in progress.")
             return
         self._scanning = True
-        self._set_status(f"Escaneando {path} ...")
-        self._append_log(f"Iniciando escaneo: {path}")
+        self._set_status(f"Scanning {path} ...")
+        self._append_log(f"Starting scan: {path}")
         self._thread = threading.Thread(
             target=self._scan_worker, args=(path,), name="sentinel-scan", daemon=True
         )
@@ -217,9 +217,9 @@ class SentinelGUI:
             self.root.after(POLL_INTERVAL_MS, self._poll_queue)
 
     def scan_path(self, path: str) -> ScanResult:
-        """Escanea ``path`` de forma síncrona y actualiza estado y registro."""
+        """Scan ``path`` synchronously and update the status and log."""
         scanner = self._build_scanner()
-        self._set_status(f"Escaneando {path} ...")
+        self._set_status(f"Scanning {path} ...")
         self.logger.scan_start(
             [path],
             signatures_version=scanner.signatures.version,
@@ -228,26 +228,26 @@ class SentinelGUI:
         try:
             result = scanner.scan(path)
         except (OSError, ValueError, TypeError) as exc:
-            self._report_error(f"Error al escanear {path}: {exc}")
-            self._set_status("Error en el escaneo")
+            self._report_error(f"Error scanning {path}: {exc}")
+            self._set_status("Scan failed")
             raise
         self._finish_scan(result, prompt_quarantine=False)
         return result
 
     def format_summary(self, result: ScanResult) -> str:
-        """Devuelve un resumen legible con recuentos, severidad y hallazgos."""
+        """Return a human-readable summary with counts, severity, and findings."""
         severity = result.max_severity
-        level = severity.value.upper() if severity else "NINGUNA"
+        level = severity.value.upper() if severity else "NONE"
         lines = [
-            "INFORME DE ESCANEO",
-            f"  Inicio     : {result.started_at}",
-            f"  Duración   : {result.duration_seconds:.2f} s",
-            f"  Archivos   : {result.files_scanned}  ({_human_size(result.bytes_scanned)})",
-            f"  Omitidos   : {result.skipped}",
-            f"  Excluidos  : {result.allowed}",
-            f"  Contenedor : {result.container_entries} entradas",
-            f"  Errores    : {len(result.errors)}",
-            f"  Hallazgos  : {len(result.findings)}  (severidad máxima: {level})",
+            "SCAN REPORT",
+            f"  Started    : {result.started_at}",
+            f"  Duration   : {result.duration_seconds:.2f} s",
+            f"  Files      : {result.files_scanned}  ({_human_size(result.bytes_scanned)})",
+            f"  Skipped    : {result.skipped}",
+            f"  Allowed    : {result.allowed}",
+            f"  Container  : {result.container_entries} entries",
+            f"  Errors     : {len(result.errors)}",
+            f"  Findings   : {len(result.findings)}  (max severity: {level})",
         ]
         for finding in result.sorted_findings():
             lines.append(
@@ -257,15 +257,15 @@ class SentinelGUI:
             lines.append(f"      {finding.path}")
             lines.append(f"      {finding.description}")
         if not result.findings:
-            lines.append("  No se encontraron amenazas.")
+            lines.append("  No threats found.")
         return "\n".join(lines)
 
     def refresh_quarantine(self) -> list[QuarantineEntry]:
-        """Actualiza el ``Treeview`` y devuelve las entradas de cuarentena."""
+        """Refresh the ``Treeview`` and return the quarantine entries."""
         try:
             entries = self.quarantine.list()
         except (OSError, ValueError) as exc:
-            self._report_error(f"No se pudo leer la cuarentena: {exc}")
+            self._report_error(f"Could not read the quarantine: {exc}")
             return []
         if self.tree is not None:
             self.tree.delete(*self.tree.get_children())
@@ -285,31 +285,31 @@ class SentinelGUI:
         return entries
 
     def restore_selected(self) -> None:
-        """Restaura a su ruta original la entrada seleccionada."""
+        """Restore the selected entry to its original path."""
         entry_id = self._selected_id()
         if not entry_id:
             return
         try:
             path = self.quarantine.restore(entry_id)
             self.logger.emit("quarantine.restore", id=entry_id, path=str(path))
-            self._append_log(f"Restaurado: {path}")
+            self._append_log(f"Restored: {path}")
         except (KeyError, ValueError, OSError, QuarantineIntegrityError) as exc:
-            self._report_error(f"No se pudo restaurar {entry_id}: {exc}")
+            self._report_error(f"Could not restore {entry_id}: {exc}")
         self.refresh_quarantine()
 
     def delete_selected(self) -> None:
-        """Elimina definitivamente la entrada seleccionada tras confirmarlo."""
+        """Permanently delete the selected entry after confirmation."""
         entry_id = self._selected_id()
         if not entry_id:
             return
-        if not self._confirm(f"¿Eliminar definitivamente la entrada {entry_id}?"):
+        if not self._confirm(f"Permanently delete entry {entry_id}?"):
             return
         try:
             self.quarantine.delete(entry_id)
             self.logger.emit("quarantine.delete", id=entry_id)
-            self._append_log(f"Eliminada entrada: {entry_id}")
+            self._append_log(f"Deleted entry: {entry_id}")
         except (KeyError, ValueError, OSError) as exc:
-            self._report_error(f"No se pudo eliminar {entry_id}: {exc}")
+            self._report_error(f"Could not delete {entry_id}: {exc}")
         self.refresh_quarantine()
 
     def quarantine_findings(
@@ -319,7 +319,7 @@ class SentinelGUI:
         confirmed: bool | None = None,
         scan_id: int | None = None,
     ) -> list[str]:
-        """Mueve a cuarentena los archivos detectados; devuelve los IDs creados."""
+        """Quarantine detected files; return the created IDs."""
         targets: dict[str, Any] = {}
         for finding in result.findings:
             targets.setdefault(finding.path, finding)
@@ -327,10 +327,10 @@ class SentinelGUI:
             return []
         if confirmed is None:
             confirmed = self._confirm(
-                f"¿Enviar {len(targets)} archivo(s) detectado(s) a cuarentena?"
+                f"Quarantine {len(targets)} detected file(s)?"
             )
         if not confirmed:
-            self._append_log("Cuarentena cancelada; no se movieron archivos.")
+            self._append_log("Quarantine canceled; no files were moved.")
             return []
 
         moved: list[str] = []
@@ -341,7 +341,7 @@ class SentinelGUI:
             try:
                 entry_id = self.quarantine.add(path, finding.rule_id, finding.sha256)
             except (OSError, FileNotFoundError, ValueError) as exc:
-                self._report_error(f"No se pudo poner en cuarentena {path}: {exc}")
+                self._report_error(f"Could not quarantine {path}: {exc}")
                 result.errors.append({"path": path, "error": str(exc)})
                 continue
             self.logger.emit("quarantine.add", id=entry_id, path=path, reason=finding.rule_id)
@@ -355,19 +355,19 @@ class SentinelGUI:
             try:
                 self.database.mark_quarantined(paths, scan_id)
             except (OSError, sqlite3.Error) as exc:
-                self._report_error(f"No se pudo actualizar el historial: {exc}")
+                self._report_error(f"Could not update the history: {exc}")
         if moved:
-            self._append_log(f"En cuarentena: {len(moved)} archivo(s).")
+            self._append_log(f"Quarantined: {len(moved)} file(s).")
         return moved
 
     def _build_scanner(self) -> Scanner:
-        """Carga las firmas y construye un ``Scanner`` con la configuración dada."""
+        """Load signatures and build a ``Scanner`` with the configured settings."""
         signatures = SignatureDatabase.load(self.signatures_path)
-        # YARA es opcional; la GUI se apoya en firmas, contenido y heurística.
+        # YARA is optional; the GUI relies on signatures, content, and heuristics.
         return Scanner(signatures, self.config, yara=None)
 
     def _scan_worker(self, path: str) -> None:
-        """Cuerpo del hilo de escaneo: publica eventos en la cola."""
+        """Scan thread body: publish events to the queue."""
         try:
             scanner = self._build_scanner()
             self.logger.scan_start(
@@ -387,7 +387,7 @@ class SentinelGUI:
             self.queue.put({"type": "error", "message": str(exc)})
 
     def _poll_queue(self) -> None:
-        """Procesa la cola en el hilo principal de Tk cada 100 ms."""
+        """Process the queue on the main Tk thread every 100 ms."""
         while True:
             try:
                 message = self.queue.get_nowait()
@@ -398,31 +398,31 @@ class SentinelGUI:
             self.root.after(POLL_INTERVAL_MS, self._poll_queue)
 
     def _handle_message(self, message: dict[str, Any]) -> None:
-        """Interpreta un evento procedente del hilo de escaneo."""
+        """Handle an event coming from the scan thread."""
         kind = message.get("type")
         if kind == "progress":
             event = str(message.get("event", ""))
             count = int(message.get("count", 0))
             if event == "finding":
-                self._set_status(f"Hallazgo detectado: {message.get('path', '')}")
+                self._set_status(f"Finding detected: {message.get('path', '')}")
             elif event == "file" and count % 25 == 0:
-                self._set_status(f"Archivos analizados: {count}")
+                self._set_status(f"Files scanned: {count}")
         elif kind == "result":
             self._finish_scan(message["result"], prompt_quarantine=True)
         elif kind == "error":
             self._scanning = False
-            self._report_error(str(message.get("message", "Error desconocido")))
-            self._set_status("Error en el escaneo")
+            self._report_error(str(message.get("message", "Unknown error")))
+            self._set_status("Scan failed")
 
     def _finish_scan(self, result: ScanResult, *, prompt_quarantine: bool) -> None:
-        """Guarda el informe, muestra el resumen y actualiza la cuarentena."""
+        """Save the report, display the summary, and refresh the quarantine."""
         self._scanning = False
         self._last_result = result
         self._append_log(self.format_summary(result))
         severity = result.max_severity
-        level = severity.value.upper() if severity else "NINGUNA"
+        level = severity.value.upper() if severity else "NONE"
         self._set_status(
-            f"Completado: {len(result.findings)} hallazgo(s) · severidad máxima: {level}"
+            f"Completed: {len(result.findings)} finding(s) · max severity: {level}"
         )
         try:
             self._last_scan_id = self.database.save_scan(result)
@@ -430,40 +430,40 @@ class SentinelGUI:
                 self.logger.finding(finding)
             self.logger.scan_finish({"scan_id": self._last_scan_id, **summarize(result)})
         except (OSError, ValueError, TypeError, sqlite3.Error) as exc:
-            self._report_error(f"No se pudo guardar el historial: {exc}")
+            self._report_error(f"Could not save the history: {exc}")
         if prompt_quarantine and result.findings:
             self.quarantine_findings(result, scan_id=self._last_scan_id)
         self.refresh_quarantine()
 
     def _current_path(self) -> str:
-        """Devuelve la ruta escrita en el campo de texto."""
+        """Return the path entered in the text field."""
         return self.path_var.get().strip() if self.path_var is not None else ""
 
     def _selected_id(self) -> str:
-        """Devuelve el identificador seleccionado en la lista de cuarentena."""
+        """Return the ID selected in the quarantine list."""
         if self.tree is None:
             return ""
         selection = self.tree.selection()
         return str(selection[0]) if selection else ""
 
     def _confirm(self, message: str) -> bool:
-        """Pide confirmación con ``messagebox``; sin ventana se cancela."""
+        """Ask for confirmation with ``messagebox``; cancel if there is no window."""
         if self._messagebox is None:
             return False
         try:
             return bool(self._messagebox.askyesno("Sentinel", message))
-        except Exception as exc:  # noqa: BLE001 - Tcl puede fallar al cerrar la ventana
-            self._report_error(f"No se pudo mostrar la confirmación: {exc}")
+        except Exception as exc:  # noqa: BLE001 - Tcl may fail while closing the window
+            self._report_error(f"Could not display the confirmation: {exc}")
             return False
 
     def _set_status(self, text: str) -> None:
-        """Actualiza la etiqueta de estado (y su copia en modo headless)."""
+        """Update the status label (and its headless copy)."""
         self.status = text
         if self.status_var is not None:
             self.status_var.set(text)
 
     def _append_log(self, message: str) -> None:
-        """Añade una línea al registro de solo lectura."""
+        """Append a line to the read-only log."""
         self.logs.append(message)
         if self.log_text is None:
             return
@@ -473,21 +473,21 @@ class SentinelGUI:
         self.log_text.configure(state="disabled")
 
     def _report_error(self, message: str) -> None:
-        """Muestra un error en el registro y lo duplica en stderr."""
+        """Report an error in the log and duplicate it on stderr."""
         self._append_log(f"! {message}")
         print(f"[Sentinel] {message}", file=sys.stderr)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Punto de entrada opcional para abrir la GUI sin pasar por la CLI."""
+    """Optional entry point for opening the GUI without going through the CLI."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="sentinel-gui", description="Interfaz gráfica de Sentinel."
+        prog="sentinel-gui", description="Sentinel graphical interface."
     )
-    parser.add_argument("--home", default=str(DEFAULT_HOME), help="Directorio de datos.")
+    parser.add_argument("--home", default=str(DEFAULT_HOME), help="Data directory.")
     parser.add_argument(
-        "--signatures", default=str(DEFAULT_SIGNATURES), help="Ruta a signatures.json."
+        "--signatures", default=str(DEFAULT_SIGNATURES), help="Path to signatures.json."
     )
     args = parser.parse_args(argv)
     app = SentinelGUI(args.home, args.signatures)

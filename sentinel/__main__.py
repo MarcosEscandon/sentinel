@@ -1,4 +1,4 @@
-"""Permite ejecutar el paquete con ``python -m sentinel``."""
+"""Allows running the package with ``python -m sentinel``."""
 
 from .cli import main
 

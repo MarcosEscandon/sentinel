@@ -1,12 +1,12 @@
-"""Notificaciones de escritorio para hallazgos en tiempo real.
+"""Desktop notifications for real-time findings.
 
-Los backends son independientes del motor de detección. En Windows se prefiere
-un *toast* si hay un paquete opcional instalado (``winotify``); si no, se usa un
-cuadro de mensaje nativo vía ``ctypes`` con cierre automático. El backend
-``none`` existe para servicios y entornos sin escritorio.
+Backends are independent of the detection engine. On Windows, a toast is
+preferred if an optional package is installed (``winotify``); otherwise, a
+native message box via ``ctypes`` with automatic dismissal is used. The
+``none`` backend exists for services and environments without a desktop.
 
-Las llamadas a API nativas se hacen en un hilo daemon para no bloquear al
-trabajador que está escaneando.
+Native API calls are made on a daemon thread so they do not block the worker
+that is scanning.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _ICONS = {"low": 0x40, "medium": 0x30, "high": 0x30, "critical": 0x10}
 
 
 def _has_winotify() -> bool:
-    """Comprueba si el paquete opcional ``winotify`` está disponible."""
+    """Checks whether the optional ``winotify`` package is available."""
     try:
         import winotify  # noqa: F401
     except ImportError:
@@ -30,7 +30,7 @@ def _has_winotify() -> bool:
 
 
 def available_backends() -> list[str]:
-    """Devuelve los backends utilizables en la plataforma actual."""
+    """Returns the backends usable on the current platform."""
     backends = ["none"]
     if os.name == "nt":
         if _has_winotify():
@@ -40,10 +40,10 @@ def available_backends() -> list[str]:
 
 
 def resolve_backend(preferred: str = "auto") -> str:
-    """Resuelve ``auto`` al mejor backend disponible y valida el resto."""
+    """Resolves ``auto`` to the best available backend and validates the rest."""
     if preferred not in BACKENDS:
         raise ValueError(
-            f"Backend de notificación desconocido '{preferred}'. Opciones: {', '.join(BACKENDS)}"
+            f"Unknown notification backend '{preferred}'. Options: {', '.join(BACKENDS)}"
         )
     if preferred != "auto":
         return preferred
@@ -55,18 +55,18 @@ def resolve_backend(preferred: str = "auto") -> str:
 
 
 class Notifier:
-    """Publica avisos de escritorio con degradación limpia."""
+    """Publishes desktop alerts with graceful degradation."""
 
     def __init__(self, backend: str = "auto") -> None:
         self._backend = resolve_backend(backend)
 
     @property
     def backend(self) -> str:
-        """Backend resuelto en tiempo de construcción."""
+        """Backend resolved at construction time."""
         return self._backend
 
     def notify(self, title: str, message: str, severity: str = "info") -> bool:
-        """Intenta mostrar un aviso; devuelve ``True`` si se pudo publicar."""
+        """Attempts to display an alert; returns ``True`` if it could be published."""
         if self._backend == "none":
             return False
         if self._backend == "toast":
@@ -74,7 +74,7 @@ class Notifier:
         return self._notify_messagebox(title, message, severity)
 
     def notify_finding(self, finding: Any, action: str) -> bool:
-        """Forma abreviada para los hallazgos del monitor."""
+        """Convenience wrapper for findings from the monitor."""
         severity = getattr(getattr(finding, "severity", None), "value", "info")
         return self.notify(
             f"Sentinel · {severity.upper()} · {finding.rule_id}",
@@ -112,7 +112,7 @@ class Notifier:
         try:
             import ctypes
 
-            # MB_TOPMOST | MB_SETFOREGROUND; el timeout lo impone MessageBoxTimeoutW.
+            # MB_TOPMOST | MB_SETFOREGROUND; the timeout is enforced by MessageBoxTimeoutW.
             flags = icon | 0x00040000 | 0x00010000
             ctypes.windll.user32.MessageBoxTimeoutW(
                 0, message, title, flags, 0, _MESSAGEBOX_TIMEOUT_MS

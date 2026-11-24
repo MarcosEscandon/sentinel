@@ -1,14 +1,15 @@
-"""Servicio de Windows para protección en tiempo real.
+"""Windows service for real-time protection.
 
-El servicio lee ``<home>/service.json`` y delega la vigilancia en
-:class:`~sentinel.realtime.RealtimeMonitor`. Requiere ``pywin32`` y privilegios
-de administrador para instalarse.
+The service reads ``<home>/service.json`` and delegates monitoring to
+:class:`~sentinel.realtime.RealtimeMonitor`. Installing it requires
+``pywin32`` and administrator privileges.
 
-Modos:
+Modes:
 
-* instalado: ``pythonservice.exe`` (o el exe congelado) hospeda
-  ``SentinelService`` y responde a los controles del SCM;
-* primer plano: ``sentinel service run`` permite depurar sin instalar nada.
+* installed: ``pythonservice.exe`` (or the frozen executable) hosts
+  ``SentinelService`` and responds to SCM controls;
+* foreground: ``sentinel service run`` allows debugging without installing
+  anything.
 """
 
 from __future__ import annotations
@@ -24,14 +25,14 @@ from typing import Any
 
 SERVICE_NAME = "SentinelRealtime"
 DISPLAY_NAME = "Sentinel Real-time Protection"
-DESCRIPTION = "Protección en tiempo real de Sentinel (firmas + heurística)."
+DESCRIPTION = "Sentinel real-time protection (signatures + heuristics)."
 CONFIG_NAME = "service.json"
 
 DEFAULT_HOME = Path(os.environ.get("SENTINEL_HOME", str(Path.home() / ".sentinel")))
 DEFAULT_SIGNATURES = Path(__file__).parent / "data" / "signatures.json"
-# Puntero persistido al instalar: el SCM ejecuta el servicio como LocalSystem y
-# Path.home() ya no apunta al usuario que instaló. Sin esto, SvcDoRun buscaba
-# service.json en el perfil de LocalSystem.
+# Pointer persisted at installation time: the SCM runs the service as
+# LocalSystem, so Path.home() no longer points to the user who installed it.
+# Without this, SvcDoRun looked for service.json in the LocalSystem profile.
 SERVICE_HOME_POINTER = (
     Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "sentinel" / "service_home.txt"
 )
@@ -40,11 +41,11 @@ STARTUP_MODES = ("auto", "manual", "disabled")
 
 
 class ServiceUnavailable(Exception):
-    """pywin32 o Windows no están disponibles."""
+    """pywin32 or Windows is unavailable."""
 
 
 def service_available() -> bool:
-    """Indica si se puede gestionar el servicio de Windows."""
+    """Whether the Windows service can be managed."""
     if os.name != "nt":
         return False
     return find_spec("win32service") is not None and find_spec("win32serviceutil") is not None
@@ -55,7 +56,7 @@ def config_path(home: str | Path) -> Path:
 
 
 def save_service_home(home: str | Path) -> None:
-    """Persiste el ``--home`` elegido al instalar el servicio."""
+    """Persist the ``--home`` chosen when the service was installed."""
     if os.name != "nt":
         return
     SERVICE_HOME_POINTER.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +64,7 @@ def save_service_home(home: str | Path) -> None:
 
 
 def load_service_home() -> Path:
-    """Recupera el home guardado al instalar; si no hay puntero, usa DEFAULT_HOME."""
+    """Retrieve the home saved at installation; if there is no pointer, use DEFAULT_HOME."""
     if os.name != "nt":
         return DEFAULT_HOME
     try:
@@ -74,7 +75,7 @@ def load_service_home() -> Path:
 
 
 def clear_service_home() -> None:
-    """Elimina el puntero al desinstalar el servicio."""
+    """Remove the pointer when the service is uninstalled."""
     if os.name != "nt":
         return
     try:
@@ -93,11 +94,11 @@ def save_config(
     config_file: str | Path | None = None,
     poll_interval: float = 2.0,
 ) -> Path:
-    """Guarda la configuración que usará el servicio al arrancar."""
+    """Save the configuration the service will use at startup."""
     if not paths:
-        raise ValueError("El servicio necesita al menos una ruta que vigilar")
+        raise ValueError("The service needs at least one path to monitor")
     if poll_interval <= 0:
-        raise ValueError("poll_interval debe ser positivo")
+        raise ValueError("poll_interval must be positive")
     payload: dict[str, Any] = {
         "version": 1,
         "paths": [str(path) for path in paths],
@@ -112,21 +113,21 @@ def save_config(
 
 
 def load_config(home: str | Path) -> dict[str, Any]:
-    """Carga la configuración del servicio."""
+    """Load the service configuration."""
     path = config_path(home)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ServiceUnavailable(f"No hay configuración de servicio en {path}") from exc
+        raise ServiceUnavailable(f"No service configuration found at {path}") from exc
     except (OSError, json.JSONDecodeError, TypeError) as exc:
-        raise ValueError(f"Configuración de servicio inválida en {path}: {exc}") from exc
+        raise ValueError(f"Invalid service configuration at {path}: {exc}") from exc
     if not isinstance(payload, dict) or not isinstance(payload.get("paths"), list):
-        raise TypeError(f"Configuración de servicio inválida en {path}")
+        raise TypeError(f"Invalid service configuration at {path}")
     return payload
 
 
 def build_monitor(home: str | Path) -> Any:
-    """Construye el monitor a partir de la configuración guardada."""
+    """Build the monitor from the saved configuration."""
     try:
         from .config import ScanConfig
         from .core.allowlist import AllowList
@@ -134,8 +135,8 @@ def build_monitor(home: str | Path) -> Any:
         from .core.quarantine import Quarantine
         from .engine.signatures import SignatureDatabase
         from .realtime import RealtimeMonitor
-    except ImportError as exc:  # pragma: no cover - depende de extras opcionales
-        raise ServiceUnavailable(f"No se pudo iniciar la protección en tiempo real: {exc}") from exc
+    except ImportError as exc:  # pragma: no cover - depends on optional extras
+        raise ServiceUnavailable(f"Could not start real-time protection: {exc}") from exc
 
     root = Path(home)
     config_data = load_config(root)
@@ -157,15 +158,15 @@ def build_monitor(home: str | Path) -> Any:
 
 
 def run_foreground(home: str | Path) -> int:
-    """Ejecuta el monitor en primer plano (Ctrl+C para detener)."""
+    """Run the monitor in the foreground (Ctrl+C to stop)."""
     monitor = build_monitor(home)
     monitor.start()
-    print("Protección en tiempo real activa. Ctrl+C para detener.")
+    print("Real-time protection active. Press Ctrl+C to stop.")
     try:
         while getattr(monitor, "is_alive", True):
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nDeteniendo la protección en tiempo real...")
+        print("\nStopping real-time protection...")
     finally:
         monitor.stop()
     return 0
@@ -174,7 +175,7 @@ def run_foreground(home: str | Path) -> int:
 def _require_service() -> Any:
     if not service_available():
         raise ServiceUnavailable(
-            "Se necesita Windows y pywin32. Instálalo con: pip install -e '.[service]'"
+            "Windows and pywin32 are required. Install with: pip install -e '.[service]'"
         )
     import win32service
     import win32serviceutil
@@ -184,7 +185,7 @@ def _require_service() -> Any:
 
 def _startup_constant(startup: str) -> int:
     if startup not in STARTUP_MODES:
-        raise ValueError(f"startup debe ser uno de {', '.join(STARTUP_MODES)}")
+        raise ValueError(f"startup must be one of {', '.join(STARTUP_MODES)}")
     win32service, _ = _require_service()
     return {
         "auto": win32service.SERVICE_AUTO_START,
@@ -194,12 +195,12 @@ def _startup_constant(startup: str) -> int:
 
 
 def _python_class() -> str | None:
-    """En un exe congelado no hay módulo importable: el dispatcher va en main()."""
+    """In a frozen executable there is no importable module: the dispatcher lives in main()."""
     return None if getattr(sys, "frozen", False) else f"{__name__}.SentinelService"
 
 
 def install(home: str | Path, *, startup: str = "auto") -> str:
-    """Instala el servicio (requiere administrador)."""
+    """Install the service (requires administrator privileges)."""
     _, util = _require_service()
     start_type = _startup_constant(startup)
     kwargs: dict[str, Any] = {
@@ -214,14 +215,14 @@ def install(home: str | Path, *, startup: str = "auto") -> str:
 
 
 def remove() -> None:
-    """Desinstala el servicio (requiere administrador)."""
+    """Uninstall the service (requires administrator privileges)."""
     _, util = _require_service()
     util.RemoveService(SERVICE_NAME)
     clear_service_home()
 
 
 def start(wait: int = 15) -> None:
-    """Arranca el servicio y espera a que esté en ejecución."""
+    """Start the service and wait until it is running."""
     _, util = _require_service()
     util.StartService(SERVICE_NAME)
     if wait:
@@ -231,7 +232,7 @@ def start(wait: int = 15) -> None:
 
 
 def stop(wait: int = 15) -> None:
-    """Detiene el servicio."""
+    """Stop the service."""
     _, util = _require_service()
     if wait:
         util.StopServiceWithDeps(SERVICE_NAME, waitSecs=wait)
@@ -240,26 +241,26 @@ def stop(wait: int = 15) -> None:
 
 
 def status() -> str:
-    """Devuelve el estado actual del servicio."""
+    """Return the current service status."""
     win32service, util = _require_service()
     try:
         info = util.QueryServiceStatus(SERVICE_NAME)
-    except Exception as exc:  # pywintypes.error no siempre importable en tests
-        raise ServiceUnavailable(f"No se pudo consultar {SERVICE_NAME}: {exc}") from exc
+    except Exception as exc:  # pywintypes.error not always importable in tests
+        raise ServiceUnavailable(f"Could not query {SERVICE_NAME}: {exc}") from exc
     states = {
-        win32service.SERVICE_STOPPED: "detenido",
-        win32service.SERVICE_START_PENDING: "iniciando",
-        win32service.SERVICE_STOP_PENDING: "deteniendo",
-        win32service.SERVICE_RUNNING: "en ejecución",
-        win32service.SERVICE_CONTINUE_PENDING: "continuando",
-        win32service.SERVICE_PAUSE_PENDING: "pausando",
-        win32service.SERVICE_PAUSED: "pausado",
+        win32service.SERVICE_STOPPED: "stopped",
+        win32service.SERVICE_START_PENDING: "starting",
+        win32service.SERVICE_STOP_PENDING: "stopping",
+        win32service.SERVICE_RUNNING: "running",
+        win32service.SERVICE_CONTINUE_PENDING: "continuing",
+        win32service.SERVICE_PAUSE_PENDING: "pausing",
+        win32service.SERVICE_PAUSED: "paused",
     }
-    return states.get(info[1], f"desconocido ({info[1]})")
+    return states.get(info[1], f"unknown ({info[1]})")
 
 
 def dispatch_frozen() -> bool:
-    """Registra el dispatcher del SCM cuando el exe congelado se inicia sin args."""
+    """Register the SCM dispatcher when the frozen executable starts without arguments."""
     if not getattr(sys, "frozen", False) or len(sys.argv) > 1:
         return False
     if not service_available():
@@ -272,9 +273,9 @@ def dispatch_frozen() -> bool:
     return True
 
 
-# La clase solo existe cuando pywin32 está disponible.
+# The class exists only when pywin32 is available.
 SentinelService: Any = None
-if service_available():  # pragma: no cover - depende del entorno
+if service_available():  # pragma: no cover - environment-dependent
     import servicemanager
     import win32service
     from win32serviceutil import ServiceFramework
@@ -286,7 +287,7 @@ if service_available():  # pragma: no cover - depende del entorno
 
         def __init__(self, args: list[str]) -> None:
             super().__init__(args)
-            # pywin32 >= 312 no crea StopEvent en ServiceFramework.
+            # pywin32 >= 312 does not create StopEvent in ServiceFramework.
             self.StopEvent = threading.Event()
             self.monitor: Any = None
 
@@ -297,7 +298,7 @@ if service_available():  # pragma: no cover - depende del entorno
                 while not self.StopEvent.wait(1.0):
                     if not getattr(self.monitor, "is_alive", True):
                         break
-            except Exception as exc:  # el SCM debe recibir el error, no un traceback mudo
+            except Exception as exc:  # the SCM must receive the error, not a silent traceback
                 servicemanager.LogErrorMsg(f"Sentinel: {exc}")
                 raise
 

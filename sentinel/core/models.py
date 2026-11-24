@@ -1,4 +1,4 @@
-"""Modelos de datos compartidos por todas las capas."""
+"""Data models shared by all layers."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from typing import Any
 
 
 def utc_now() -> str:
-    """Devuelve la hora actual en ISO 8601 con zona UTC."""
+    """Returns the current time in ISO 8601 format with the UTC zone."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class Severity(str, Enum):
-    """Niveles de severidad, ordenados de menor a mayor."""
+    """Severity levels, ordered from lowest to highest."""
 
     INFO = "info"
     LOW = "low"
@@ -41,11 +41,11 @@ class Severity(str, Enum):
             return cls(str(value).lower())
         except ValueError as exc:
             valid = ", ".join(item.value for item in cls)
-            raise ValueError(f"Severidad desconocida {value!r}. Válidas: {valid}") from exc
+            raise ValueError(f"Unknown severity {value!r}. Valid values: {valid}") from exc
 
 
 class Detection(str, Enum):
-    """Origen de una detección."""
+    """Source of a detection."""
 
     HASH = "hash"
     FILENAME = "filename"
@@ -56,7 +56,7 @@ class Detection(str, Enum):
 
 @dataclass(frozen=True)
 class RuleHit:
-    """Resultado crudo de un módulo de detección, antes de asociarlo a un archivo."""
+    """Raw result from a detection module, before it is associated with a file."""
 
     rule_id: str
     detection: Detection
@@ -76,7 +76,7 @@ class RuleHit:
 
 @dataclass
 class Finding:
-    """Un archivo detectado como sospechoso o malicioso."""
+    """A file detected as suspicious or malicious."""
 
     path: str
     rule_id: str
@@ -100,7 +100,7 @@ class Finding:
 
 @dataclass
 class ScanResult:
-    """Informe completo de una ejecución de escaneo."""
+    """Full report of a scan run."""
 
     roots: list[str]
     started_at: str = field(default_factory=utc_now)
@@ -151,6 +151,6 @@ class ScanResult:
 
 
 def highest(findings: Iterable[Finding]) -> Severity | None:
-    """Devuelve la severidad más alta de una colección de hallazgos."""
+    """Returns the highest severity in a collection of findings."""
     items = list(findings)
     return max((item.severity for item in items), key=lambda item: item.rank, default=None)

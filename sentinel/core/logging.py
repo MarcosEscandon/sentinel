@@ -1,4 +1,4 @@
-"""Registro de auditoría en formato JSON Lines."""
+"""Audit log in JSON Lines format."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from .models import utc_now
 
 
 class AuditLogger:
-    """Escribe eventos como una línea JSON por evento.
+    """Writes events as one JSON line per event.
 
-    Es seguro usarlo desde los hilos del escáner: las escrituras están
-    protegidas por un cerrojo. Si ``path`` es ``None`` no hace nada.
+    It is safe to use from scanner threads: writes are protected by a lock. If
+    ``path`` is ``None``, it does nothing.
     """
 
     def __init__(self, path: str | Path | None) -> None:

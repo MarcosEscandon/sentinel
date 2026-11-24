@@ -1,8 +1,8 @@
-"""Integración opcional con YARA.
+"""Optional YARA integration.
 
-``yara-python`` no es una dependencia obligatoria: si no está instalado,
-el escáner sigue funcionando con firmas SHA-256, reglas de contenido y
-heurística. Para activarlo::
+``yara-python`` is not a required dependency: if it is not installed, the
+scanner still works with SHA-256 signatures, content rules, and heuristics.
+To enable it::
 
     pip install -e ".[yara]"
 """
@@ -17,25 +17,25 @@ from ..core.models import Detection, RuleHit, Severity
 
 
 class YaraUnavailable(RuntimeError):
-    """Se lanza cuando se solicita YARA pero el módulo no está instalado."""
+    """Raised when YARA is requested but the module is not installed."""
 
 
 class YaraEngine:
-    """Compila un conjunto de reglas YARA y las aplica sobre una muestra."""
+    """Compiles a set of YARA rules and applies them to a sample."""
 
     def __init__(self, rule_paths: list[str | Path] | None = None) -> None:
         try:
             import yara  # type: ignore[import-not-found]
-        except ImportError as exc:  # pragma: no cover - depende del entorno
+        except ImportError as exc:  # pragma: no cover - environment-dependent
             raise YaraUnavailable(
-                "yara-python no está instalado. Instálalo con: pip install -e '.[yara]'"
+                "yara-python is not installed. Install it with: pip install -e '.[yara]'"
             ) from exc
 
         self._yara = yara
         paths = [Path(item) for item in (rule_paths or [])]
         missing = [str(path) for path in paths if not path.is_file()]
         if missing:
-            raise FileNotFoundError(f"Reglas YARA no encontradas: {missing}")
+            raise FileNotFoundError(f"YARA rules not found: {missing}")
         sources = {path.stem: str(path) for path in paths}
         self.rules = yara.compile(filepaths=sources) if sources else yara.compile(source="")
         self.rule_count = len(paths)
@@ -47,13 +47,13 @@ class YaraEngine:
     def match(self, sample: bytes, file_size: int, timeout: int = 5) -> list[RuleHit]:
         try:
             matches = self.rules.match(data=sample, timeout=timeout)
-        except Exception as exc:  # noqa: BLE001 - YARA lanza sus propias excepciones
+        except Exception as exc:  # noqa: BLE001 - YARA raises its own exceptions
             return [
                 RuleHit(
                     rule_id="YARA-ERROR",
                     detection=Detection.YARA,
                     severity=Severity.INFO,
-                    description=f"Error al evaluar reglas YARA: {exc}",
+                    description=f"Error evaluating YARA rules: {exc}",
                 )
             ]
 
@@ -62,7 +62,7 @@ class YaraEngine:
             meta: dict[str, Any] = dict(match.meta or {})
             rule_id = str(meta.get("id") or match.rule)
             severity = Severity.parse(meta.get("severity", "medium"))
-            description = str(meta.get("description") or f"Regla YARA {match.rule}")
+            description = str(meta.get("description") or f"YARA rule {match.rule}")
             indicators = tuple(
                 f"{namespace}:{offset}" for namespace, offset, _ in (match.strings or [])[:8]
             )

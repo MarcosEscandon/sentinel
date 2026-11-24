@@ -1,16 +1,16 @@
-"""Autoevaluación de seguridad de una instalación de Sentinel.
+"""Security self-assessment of a Sentinel installation.
 
-El comando ``sentinel audit`` ejecuta comprobaciones reales sobre la base de
-firmas, la cuarentena, el registro de auditoría, las exclusiones, el monitor en
-tiempo real y la configuración. Ninguna comprobación lanza excepciones hacia
-la CLI: los errores se convierten en ``AuditCheck(passed=False)``.
+The ``sentinel audit`` command runs real checks against the signature
+database, quarantine, audit log, exclusions, real-time monitor, and
+configuration. No check propagates exceptions to the CLI: errors are converted
+into ``AuditCheck(passed=False)``.
 
-La clave pública utilizada por ``signatures.signed`` se resuelve, en este
-orden, desde ``SENTINEL_PUBLIC_KEY``, ``<home>/signing.pub`` y
-``<signatures>.pub``. La CLI recibe la clave en
-``sentinel signatures update --public-key`` y en ``sentinel audit --public-key``
-(que la inyecta en ``SENTINEL_PUBLIC_KEY``); no hay configuración persistente,
-así que esta auditoría usa esa convención de resolución.
+The public key used by ``signatures.signed`` is resolved, in this order, from
+``SENTINEL_PUBLIC_KEY``, ``<home>/signing.pub``, and ``<signatures>.pub``. The
+CLI accepts the key via ``sentinel signatures update --public-key`` and
+``sentinel audit --public-key`` (which injects it into ``SENTINEL_PUBLIC_KEY``);
+there is no persistent configuration, so this audit follows that resolution
+convention.
 """
 
 from __future__ import annotations
@@ -32,35 +32,35 @@ from .engine.signatures import SignatureDatabase
 from .realtime import available_backends
 
 PUBLIC_KEY_ENV = "SENTINEL_PUBLIC_KEY"
-"""Variable de entorno con la ruta a la clave pública de confianza."""
+"""Environment variable with the path to the trusted public key."""
 
 AUDIT_EVENT = "audit.check"
-"""Evento de prueba escrito por la comprobación ``logging.enabled``."""
+"""Test event written by the ``logging.enabled`` check."""
 
-_REMEDIAR_BASE = "Repara o sustituye signatures.json y ejecuta `sentinel signatures validate`."
+_REMEDIAR_BASE = "Repair or replace signatures.json and run `sentinel signatures validate`."
 _REMEDIAR_FIRMA = (
-    "Producción exige firma Ed25519: genera un par con `sentinel keys generate`, firma "
-    "con `sentinel signatures sign --key <privada> --output <signatures>.sig` y "
-    "distribuye la clave pública por un canal seguro."
+    "Production requires an Ed25519 signature: generate a pair with `sentinel keys generate`, sign "
+    "with `sentinel signatures sign --key <private> --output <signatures>.sig`, and "
+    "distribute the public key through a secure channel."
 )
 _REMEDIAR_CLAVE = (
-    f"Configura {PUBLIC_KEY_ENV}=<ruta.pem> o copia la clave pública a "
-    "<home>/signing.pub o junto a la base como <signatures>.pub."
+    f"Set {PUBLIC_KEY_ENV}=<path.pem> or copy the public key to "
+    "<home>/signing.pub or next to the database as <signatures>.pub."
 )
 _REMEDIAR_CUARENTENA = (
-    "No restaures entradas alteradas; conserva el índice y la clave, e investiga "
-    "el cambio con `sentinel quarantine verify`."
+    "Do not restore altered entries; preserve the index and the key, and investigate "
+    "the change with `sentinel quarantine verify`."
 )
 _REMEDIAR_LOG = (
-    "Comprueba que <home> es escribible y que audit.jsonl no ha sido editado a mano."
+    "Ensure <home> is writable and that audit.jsonl has not been edited by hand."
 )
 _REMEDIAR_ALLOWLIST = (
-    "Revisa AllowList.for_self: la auto-exclusión es necesaria para evitar auto-detección."
+    "Review AllowList.for_self: self-exclusion is necessary to avoid self-detection."
 )
-_REMEDIAR_REALTIME = "Instala `watchdog` o verifica el backend nativo de Windows (ctypes)."
-_REMEDIAR_CONFIG = "Corrige los límites anti-bomba en el JSON pasado con --config-file."
+_REMEDIAR_REALTIME = "Install `watchdog` or verify the native Windows backend (ctypes)."
+_REMEDIAR_CONFIG = "Fix the anti-bomb limits in the JSON passed with --config-file."
 _REMEDIAR_HOME = (
-    "Usa %ProgramData%\\Sentinel u otra ruta escribible fuera de Windows/Program Files."
+    "Use %ProgramData%\\Sentinel or another writable path outside Windows/Program Files."
 )
 
 _CheckResult = tuple[bool, str, str]
@@ -68,7 +68,7 @@ _CheckResult = tuple[bool, str, str]
 
 @dataclass
 class AuditCheck:
-    """Resultado de una comprobación concreta de la autoevaluación."""
+    """Result of a specific self-assessment check."""
 
     name: str
     passed: bool
@@ -78,7 +78,7 @@ class AuditCheck:
 
 @dataclass
 class SecurityAudit:
-    """Informe agregado con todas las comprobaciones ejecutadas."""
+    """Aggregate report containing all checks that were run."""
 
     home: Path
     signatures: Path
@@ -86,24 +86,24 @@ class SecurityAudit:
 
     @property
     def passed(self) -> bool:
-        """``True`` solo si hay comprobaciones y todas pasaron."""
+        """``True`` only if there are checks and all of them passed."""
         return bool(self.checks) and all(check.passed for check in self.checks)
 
     @property
     def failures(self) -> list[AuditCheck]:
-        """Comprobaciones fallidas, en el orden en que se ejecutaron."""
+        """Failed checks, in the order in which they were run."""
         return [check for check in self.checks if not check.passed]
 
     @property
     def score(self) -> int:
-        """Porcentaje de comprobaciones superadas (0-100)."""
+        """Percentage of checks passed (0-100)."""
         if not self.checks:
             return 0
         ok = sum(1 for check in self.checks if check.passed)
         return round(100 * ok / len(self.checks))
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialización JSON-compatible, con las propiedades calculadas."""
+        """JSON-compatible serialization, including the computed properties."""
         return {
             "home": str(self.home),
             "signatures": str(self.signatures),
@@ -119,11 +119,11 @@ def _check(
     fallback_remediation: str,
     operation: Callable[[], _CheckResult],
 ) -> AuditCheck:
-    """Ejecuta una comprobación y convierte cualquier error en un fallo."""
+    """Runs a check and converts any error into a failure."""
     try:
         passed, detail, remediation = operation()
         return AuditCheck(name, bool(passed), str(detail), str(remediation))
-    except Exception as exc:  # noqa: BLE001 - la auditoría nunca debe propagar errores
+    except Exception as exc:  # noqa: BLE001 - the audit must never propagate errors
         return AuditCheck(
             name,
             False,
@@ -133,28 +133,28 @@ def _check(
 
 
 def _check_signatures_valid(signatures: Path) -> _CheckResult:
-    """Carga y valida la base, exigiendo una revisión estrictamente positiva."""
+    """Loads and validates the database, requiring a strictly positive revision."""
     database = SignatureDatabase.load(signatures)
-    # Una base vacía (revisión 0) es válida como punto de partida, pero no como
-    # base instalada: ``check_rollback`` verifica que no retrocedemos desde ahí.
+    # An empty database (revision 0) is valid as a starting point, but not as an
+    # installed database: ``check_rollback`` verifies that we do not roll back from it.
     database.check_rollback(SignatureDatabase.empty())
     stats = database.stats()
     revision = database.revision
     if not isinstance(revision, int) or isinstance(revision, bool) or revision <= 0:
         return (
             False,
-            f"revisión inválida: {revision!r} (debe ser un entero > 0)",
+            f"invalid revision: {revision!r} (must be an integer > 0)",
             _REMEDIAR_BASE,
         )
     detail = (
-        f"base válida: revisión {revision}, {stats['hashes']} hashes, "
-        f"{stats['content_rules']} reglas de contenido"
+        f"valid database: revision {revision}, {stats['hashes']} hashes, "
+        f"{stats['content_rules']} content rules"
     )
     return True, detail, ""
 
 
 def _public_key_candidates(home: Path, signatures: Path) -> list[Path]:
-    """Devuelve las ubicaciones admitidas para la clave pública de confianza."""
+    """Returns the supported locations for the trusted public key."""
     candidates: list[Path] = []
     configured = os.environ.get(PUBLIC_KEY_ENV, "").strip()
     if configured:
@@ -169,19 +169,19 @@ def _public_key_candidates(home: Path, signatures: Path) -> list[Path]:
 
 
 def _check_signatures_signed(home: Path, signatures: Path) -> _CheckResult:
-    """Verifica la firma Ed25519 separada contra la clave pública configurada."""
+    """Verifies the separate Ed25519 signature against the configured public key."""
     signature_path = Path(str(signatures) + ".sig")
     if not signature_path.is_file():
         return (
             False,
-            f"no existe la firma {signature_path.name}; la base no es verificable",
+            f"signature {signature_path.name} is missing; the database cannot be verified",
             _REMEDIAR_FIRMA,
         )
     if not crypto.available():
         return (
             False,
-            "cryptography no está instalado; no se puede verificar Ed25519",
-            "Instala el extra de firma: pip install -e '.[signing]'.",
+            "cryptography is not installed; Ed25519 verification is unavailable",
+            "Install the signing extra: pip install -e '.[signing]'.",
         )
 
     candidates = _public_key_candidates(home, signatures)
@@ -192,7 +192,7 @@ def _check_signatures_signed(home: Path, signatures: Path) -> _CheckResult:
     if key_path is None:
         return (
             False,
-            "hay firma pero no hay clave pública configurada",
+            "there is a signature but no configured public key",
             _REMEDIAR_CLAVE,
         )
 
@@ -201,108 +201,108 @@ def _check_signatures_signed(home: Path, signatures: Path) -> _CheckResult:
     if len(signature) != 64:
         return (
             False,
-            f"firma de {len(signature)} bytes; Ed25519 exige 64",
+            f"signature of {len(signature)} bytes; Ed25519 requires 64",
             _REMEDIAR_FIRMA,
         )
     if crypto.verify_payload(payload, signature, key_path):
-        return True, f"firma Ed25519 válida con {key_path}", ""
+        return True, f"valid Ed25519 signature with {key_path}", ""
     return (
         False,
-        "la firma Ed25519 no coincide con el contenido de la base",
-        "No uses esta base: vuelve a distribuir el JSON y su firma desde la fuente de confianza.",
+        "the Ed25519 signature does not match the database content",
+        "Do not use this database: redistribute the JSON and its signature from the trusted source.",
     )
 
 
 def _check_quarantine_integrity(home: Path) -> _CheckResult:
-    """Verifica entradas y MAC de la cuarentena sin lanzar excepciones."""
+    """Verifies quarantine entries and MACs without raising exceptions."""
     store = Quarantine(home / "quarantine")
     if not store.index_path.exists():
-        return True, "sin entradas", ""
+        return True, "no entries", ""
     results = store.verify_all()
     if not results:
-        return True, "sin entradas", ""
+        return True, "no entries", ""
     altered = [(entry.id, error) for entry, error in results if error]
     if altered:
         first_id, first_error = altered[0]
         return (
             False,
             (
-                f"{len(altered)} de {len(results)} entradas alteradas "
+                f"{len(altered)} of {len(results)} entries altered "
                 f"({first_id}: {first_error})"
             ),
             _REMEDIAR_CUARENTENA,
         )
-    return True, f"{len(results)} entrada(s) íntegras", ""
+    return True, f"{len(results)} intact entry(ies)", ""
 
 
 def _check_quarantine_key_permissions(home: Path) -> _CheckResult:
-    """Comprueba los permisos de ``quarantine.key`` sin modificarlos nunca."""
+    """Checks ``quarantine.key`` permissions without ever modifying them."""
     key_path = home / "quarantine.key"
     if not key_path.is_file():
-        return True, "sin clave de cuarentena: no hay permisos que comprobar", ""
+        return True, "no quarantine key: no permissions to check", ""
     mode = stat.S_IMODE(os.stat(key_path).st_mode)
     readable_by_others = bool(mode & (stat.S_IRGRP | stat.S_IROTH))
     if os.name == "nt":
-        # os.stat en Windows no expone ACLs: incluso un archivo con una ACL
-        # restrictiva suele mostrar modo 0666. Solo podemos afirmar ausencia de
-        # lectura para grupo/otros cuando los bits así lo indican; en caso
-        # contrario declaramos la limitación y pasamos el check.
+        # os.stat on Windows does not expose ACLs: even a file with a restrictive
+        # ACL usually reports mode 0666. We can only assert the absence of group/other
+        # read access when the bits indicate it; otherwise we state the limitation
+        # and pass the check.
         if not readable_by_others:
-            return True, f"os.stat: modo {mode:04o} sin lectura para grupo/otros", ""
+            return True, f"os.stat: mode {mode:04o} without group/other read access", ""
         return (
             True,
             (
-                f"os.stat en Windows no expone ACLs (modo {mode:04o}); no se puede "
-                f"confirmar si la clave es legible por todos. Revisar con: icacls {key_path}"
+                f"os.stat on Windows does not expose ACLs (mode {mode:04o}); cannot "
+                f"confirm whether the key is world-readable. Check with: icacls {key_path}"
             ),
             "",
         )
     if readable_by_others:
-        return False, f"modo {mode:04o} permite lectura a grupo/otros", f"chmod 600 {key_path}"
-    return True, f"modo {mode:04o} restringido", ""
+        return False, f"mode {mode:04o} allows group/other read access", f"chmod 600 {key_path}"
+    return True, f"mode {mode:04o} restricted", ""
 
 
 def _check_logging(home: Path) -> _CheckResult:
-    """Escribe un evento de prueba con ``AuditLogger`` y valida el JSONL."""
+    """Writes a test event with ``AuditLogger`` and validates the JSONL."""
     path = home / "audit.jsonl"
     logger = AuditLogger(path)
     logger.emit(AUDIT_EVENT, component="audit")
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not lines:
-        return False, "el logger no escribió ninguna línea", _REMEDIAR_LOG
+        return False, "the logger wrote no lines", _REMEDIAR_LOG
     try:
         records = [json.loads(line) for line in lines]
     except json.JSONDecodeError as exc:
-        return False, f"audit.jsonl contiene una línea no JSON: {exc}", _REMEDIAR_LOG
+        return False, f"audit.jsonl contains a non-JSON line: {exc}", _REMEDIAR_LOG
     if records[-1].get("event") != AUDIT_EVENT:
-        return False, f"último evento inesperado: {records[-1].get('event')!r}", _REMEDIAR_LOG
-    return True, f"evento {AUDIT_EVENT} escrito y leído correctamente ({len(records)} línea(s))", ""
+        return False, f"unexpected last event: {records[-1].get('event')!r}", _REMEDIAR_LOG
+    return True, f"event {AUDIT_EVENT} written and read successfully ({len(records)} line(s))", ""
 
 
 def _check_allowlist_self(home: Path) -> _CheckResult:
-    """Comprueba que la auto-exclusión de la propia aplicación no esté vacía."""
+    """Checks that the application's self-exclusion is not empty."""
     package_root = Path(__file__).parent.parent
     rules = AllowList.for_self([home, package_root])
     if not rules.directories or not rules.allows_path(home / "sentinel-audit.txt"):
-        return False, "la auto-exclusión está vacía o no cubre la home", _REMEDIAR_ALLOWLIST
-    return True, f"{len(rules.directories)} directorios propios excluidos", ""
+        return False, "self-exclusion is empty or does not cover the home directory", _REMEDIAR_ALLOWLIST
+    return True, f"{len(rules.directories)} application directories excluded", ""
 
 
 def _check_realtime_backend() -> _CheckResult:
-    """Exige un backend de eventos en Windows y ``polling`` en otros SO."""
+    """Requires an event backend on Windows and ``polling`` on other OSes."""
     backends = available_backends()
     if os.name == "nt":
         usable = [backend for backend in backends if backend != "polling"]
         if not usable:
-            return False, f"solo está disponible polling: {backends}", _REMEDIAR_REALTIME
-        return True, f"backend no-polling disponible: {', '.join(usable)}", ""
+            return False, f"only polling is available: {backends}", _REMEDIAR_REALTIME
+        return True, f"non-polling backend available: {', '.join(usable)}", ""
     if "polling" not in backends:
-        return False, f"no hay backend de sondeo: {backends}", _REMEDIAR_REALTIME
-    return True, f"backend disponible: {', '.join(backends)}", ""
+        return False, f"no polling backend available: {backends}", _REMEDIAR_REALTIME
+    return True, f"available backend: {', '.join(backends)}", ""
 
 
 def _check_config() -> _CheckResult:
-    """Valida los límites anti-bomba de la configuración por defecto."""
+    """Validates the anti-bomb limits of the default configuration."""
     config = ScanConfig()
     config.validate()
     names = (
@@ -315,7 +315,7 @@ def _check_config() -> _CheckResult:
     )
     values = {name: getattr(config, name) for name in names}
     if any(value <= 0 for value in values.values()) or config.container_max_depth < 1:
-        return False, f"límites no válidos: {values}", _REMEDIAR_CONFIG
+        return False, f"invalid limits: {values}", _REMEDIAR_CONFIG
     return (
         True,
         (
@@ -327,7 +327,7 @@ def _check_config() -> _CheckResult:
 
 
 def _home_location_problem(home: Path) -> str | None:
-    """Devuelve el motivo por el que la home es inválida, o ``None``."""
+    """Returns the reason why the home directory is invalid, or ``None``."""
     if os.name != "nt":
         return None
     try:
@@ -335,7 +335,7 @@ def _home_location_problem(home: Path) -> str | None:
     except OSError:
         resolved = Path(os.path.abspath(str(home)))
     parts = [part.lower() for part in resolved.parts]
-    # ProgramData es la ubicación de configuración de máquina recomendada.
+    # ProgramData is the recommended machine-wide configuration location.
     if any(part == "programdata" for part in parts):
         return None
     if len(parts) >= 2 and parts[0].rstrip("\\/").endswith(":"):
@@ -345,43 +345,43 @@ def _home_location_problem(home: Path) -> str | None:
             "program files (x86)": "Program Files (x86)",
         }
         if parts[1] in forbidden:
-            return f"la home está dentro de {forbidden[parts[1]]} (ruta de solo lectura)"
+            return f"the home directory is inside {forbidden[parts[1]]} (read-only path)"
     return None
 
 
 def _check_home_location(home: Path) -> _CheckResult:
-    """Rechaza homes bajo directorios del sistema de solo lectura."""
+    """Rejects home directories under read-only system directories."""
     problem = _home_location_problem(home)
     if problem:
         return False, problem, _REMEDIAR_HOME
-    return True, f"home en ruta escribible: {home}", ""
+    return True, f"home directory on a writable path: {home}", ""
 
 
 def _check_iocs_minimum(signatures: Path) -> _CheckResult:
-    """Exige al menos un hash y una regla de contenido en la base."""
+    """Requires at least one hash and one content rule in the database."""
     stats = SignatureDatabase.load(signatures).stats()
     hashes = int(stats["hashes"])
     content = int(stats["content_rules"])
     if hashes < 1 or content < 1:
         return (
             False,
-            f"base insuficiente: {hashes} hash(es), {content} regla(s) de contenido",
-            "Instala una base con al menos un hash y una regla de contenido (por ejemplo EICAR).",
+            f"insufficient database: {hashes} hash(es), {content} content rule(s)",
+            "Install a database with at least one hash and one content rule (for example EICAR).",
         )
-    return True, f"{hashes} hash(es) y {content} regla(s) de contenido", ""
+    return True, f"{hashes} hash(es) and {content} content rule(s)", ""
 
 
 def run_security_audit(home: str | Path, signatures: str | Path) -> SecurityAudit:
-    """Ejecuta todas las comprobaciones sin lanzar excepciones.
+    """Runs all checks without raising exceptions.
 
-    ``home`` es el directorio de datos de Sentinel y ``signatures`` la ruta a
-    ``signatures.json``. Cada check captura sus propios errores; los problemas
-    al construir las rutas se convierten en un check ``audit.setup`` fallido.
+    ``home`` is the Sentinel data directory and ``signatures`` is the path to
+    ``signatures.json``. Each check catches its own errors; problems while
+    building the paths become a failed ``audit.setup`` check.
     """
     try:
         home_path = Path(home)
         signatures_path = Path(signatures)
-    except Exception as exc:  # noqa: BLE001 - rutas inválidas no deben propagarse
+    except Exception as exc:  # noqa: BLE001 - invalid paths must not propagate
         return SecurityAudit(
             Path(),
             Path(),
@@ -390,7 +390,7 @@ def run_security_audit(home: str | Path, signatures: str | Path) -> SecurityAudi
                     "audit.setup",
                     False,
                     f"{type(exc).__name__}: {exc}",
-                    "Pasa rutas válidas a run_security_audit(home, signatures).",
+                    "Pass valid paths to run_security_audit(home, signatures).",
                 )
             ],
         )
@@ -413,8 +413,8 @@ def run_security_audit(home: str | Path, signatures: str | Path) -> SecurityAudi
         ),
         _check(
             "quarantine.key_permissions",
-            "Revisa los permisos de <home>/quarantine.key manualmente; no los cambies "
-            "automáticamente.",
+            "Review the permissions of <home>/quarantine.key manually; do not "
+            "change them automatically.",
             lambda: _check_quarantine_key_permissions(home_path),
         ),
         _check("logging.enabled", _REMEDIAR_LOG, lambda: _check_logging(home_path)),
