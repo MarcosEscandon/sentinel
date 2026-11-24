@@ -219,7 +219,7 @@ sentinel/
 {
   "schema": 1,
   "version": "2026-11-21",
-  "revision": 2,
+  "revision": 3,
   "hashes": {
     "<sha256>": {"id": "IOC-0001", "severity": "high", "description": "..."}
   },
@@ -286,7 +286,9 @@ resultado es **100/100**. El detalle y las remediations están en
 
 `sentinel integrity build/verify` genera y comprueba un manifiesto SHA-256.
 `verify` distingue `missing`, `modified` y `added`, y con `--public-key`
-valida también la firma Ed25519 del manifiesto. El build de PyInstaller genera
+valida también la firma Ed25519 del manifiesto. El análisis estático con
+`python -m bandit -r sentinel -x tests` terminó con **0 avisos** (6026 líneas
+analizadas; detalle en `docs/bandit-results.json`). El build de PyInstaller genera
 y empaqueta `manifest.json` (y su firma si se define `SENTINEL_PRIVATE_KEY`)
 dentro de `sentinel/data`; se puede verificar con:
 
@@ -344,5 +346,5 @@ pip install -e ".[packaging]"
 Con `SENTINEL_PRIVATE_KEY=<ruta.pem>` el build también firma el manifiesto de
 datos con Ed25519. Consulta `packaging/README.md` para certificados, opciones
 onedir/onefile y smoke tests. Herramientas de diagnóstico: `python -m pytest`,
-`python -m ruff check .`, `sentinel selftest`, `sentinel audit` y
-`python tools/benchmark.py`.
+`python -m ruff check .`, `python -m bandit -r sentinel -x tests`,
+`sentinel selftest`, `sentinel audit` y `python tools/benchmark.py`.

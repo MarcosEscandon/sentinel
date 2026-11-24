@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -28,7 +29,11 @@ MAX_SIGNATURE = 4096
 
 
 def _download(url: str, limit: int, timeout: float) -> bytes:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(f"URL no permitida (solo http/https): {url}")
+    # El esquema ya se validó explícitamente arriba; no se aceptan file:/custom.
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # nosec B310
         payload = response.read(limit + 1)
     if len(payload) > limit:
         raise ValueError(f"La descarga supera el límite de {limit} bytes: {url}")

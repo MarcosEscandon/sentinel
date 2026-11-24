@@ -10,10 +10,11 @@ escáner es un proceso de usuario que lee archivos y aplica reglas.
 - Python 3.10, objetivo Windows; los módulos puros funcionan también en otros SO.
 - Análisis bajo demanda (`scan`), monitorización en tiempo real (`monitor` /
   servicio de Windows opcional) y cuarentena reversible.
-- Base de firmas JSON (`sentinel/data/signatures.json`, revisión 2) con un hash
-  EICAR y reglas de contenido, una de ellas sintética (`SENTINEL_TEST_MARKER`).
-- Autoevaluación `sentinel/audit.py` (diez comprobaciones; la integración del
-  subcomando `sentinel audit` en la CLI se entrega por separado).
+- Base de firmas JSON (`sentinel/data/signatures.json`, revisión 3) con 11
+  hashes (EICAR y diez IOCs públicos) y 2 reglas de contenido, una de ellas
+  sintética (`SENTINEL_TEST_MARKER`), con firma `.sig` y clave pública `.pub`.
+- Autoevaluación `sentinel/audit.py`, integrada como subcomando `sentinel audit`
+  (diez comprobaciones).
 
 Fuera de alcance: protección contra un atacante que ya es administrador,
 prevención de ejecución, sandboxing, reputación en la nube y respuesta
@@ -90,17 +91,18 @@ automática a incidentes.
 - **Authenticode**: no se comprueba la firma de los PE. Un binario firmado por
   una entidad legítima o robada se analiza como cualquier otro archivo; no hay
   listas de editores de confianza ni reputación.
-- **Desofuscación de macros**: `engine/ole.py` extrae flujos OLE, pero no
-  desofusca VBA, no interpreta macros y no hay sandbox. Un documento con
-  código ofuscado puede evadir las reglas de contenido.
+- **Desofuscación de macros**: `engine/ole.py` extrae flujos OLE y
+  `engine/vba.py` descomprime el proyecto MS-OVBA para aplicar reglas `VBA-*`,
+  pero no interpreta macros, no desofusca estrategias arbitrarias y no hay
+  sandbox. Un documento con código ofuscado puede evadir las reglas.
 - **Supply chain de firmas**: la clave privada se genera en disco
   (`crypto.generate_keypair`) sin cifrado ni HSM. La clave pública se entrega
   manualmente con `--public-key`; no hay pinning, cadena de certificados,
-  rotación ni firma de la propia herramienta. La base incluida **no** lleva
-  `.sig`: en instalaciones que solo copian `signatures.json` no hay verificación
-  local al cargar. `audit.py` define `SENTINEL_PUBLIC_KEY` / `signing.pub` como
-  convención nueva para poder verificar esa firma; no es una configuración que
-  la CLI usara antes.
+  rotación ni firma de la propia herramienta. La base incluida sí lleva
+  `signatures.json.sig` y `signatures.json.pub`, pero `SignatureDatabase.load()`
+  no los exige: una instalación que copie solo `signatures.json` carga sin
+  verificar localmente. `SENTINEL_PUBLIC_KEY` / `signing.pub` es la convención
+  que usa `audit.py` para comprobar esa firma.
 - **Falsos positivos**: las reglas `SENTINEL_TEST_MARKER` y la heurística de
   entropía son sintéticas. La auto-exclusión cubre directorios completos, así
   que una exclusión mal puesta crea un punto ciego. No hay *sandbox*,
@@ -116,7 +118,7 @@ automática a incidentes.
 
 ## Uso de la autoevaluación
 
-Una vez integrado el subcomando en la CLI, el flujo mínimo es:
+El flujo mínimo es:
 
 ```powershell
 # 1. Generar claves (la privada debe quedar fuera del equipo escaneado).
@@ -154,6 +156,28 @@ puntuación es el porcentaje de checks superados. **Un 100/100 no implica que
 el equipo esté libre de malware**: solo dice que estos controles están
 presentes y son coherentes.
 
+## Análisis estático del código
+
+Además de la autoevaluación en tiempo de ejecución se ejecutaron:
+
+* `python -m ruff check .`: sin avisos.
+* `python -m bandit -r sentinel -x tests`: **0 avisos** sobre 6026 líneas
+  (`docs/bandit-results.json`). Bandit señaló tres puntos que se corrigieron en
+  lugar de silenciarse: la consulta SQL con marcadores dinámicos en
+  `database.mark_quarantined()` se sustituyó por SQL estático con parámetros
+  enlazados; un `assert` en el backend nativo se cambió por una comprobación
+  explícita; y `updates._download()` valida ahora el esquema `http`/`https`
+  antes de llamar a `urlopen`; la alerta residual de Bandit sobre esa llamada
+  se documentó con `# nosec B310` porque el esquema ya está restringido. Las
+  pruebas de actualización simulan HTTPS con `urlopen` falsificado en lugar de
+  usar `file://`.
+* `git ls-files`: ni la clave privada (`packaging/keys/private.pem`), ni
+  `packaging/tools/`, ni `dist/`, `build/` o la home de pruebas están
+  versionados.
+
+Esto no sustituye a una revisión externa ni a un análisis de dependencias
+(SCA): `bandit` detecta patrones inseguros, no vulnerabilidades lógicas.
+
 ## Checklist de despliegue
 
 - [ ] Instalar la home en `%ProgramData%\Sentinel` (o carpeta del usuario con
@@ -176,4 +200,4 @@ presentes y son coherentes.
 - [ ] Probar EICAR en un entorno aislado, incluida la restauración desde
       cuarentena, y comprobar que no se generan falsos positivos inaceptables.
 - [ ] Registrar como pendientes el filtro de kernel, Authenticode, la
-      desofuscación de macros y la rotación de claves de firmas.
+      desofuscación arbitraria de macros y la rotación de claves de firmas.

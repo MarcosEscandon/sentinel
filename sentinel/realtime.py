@@ -289,7 +289,9 @@ class _NativeDirectoryWatcher(threading.Thread):
 
     def _watch(self, handle: int, event: int) -> None:
         """Encadena lecturas solapadas hasta que se solicite la parada."""
-        assert _kernel32 is not None
+        if _kernel32 is None:
+            self._error("backend nativo no disponible")
+            return
         buffer = ctypes.cast(self._buffer, _LPVOID)
         while True:
             # El cerrojo garantiza que ``request_stop`` cancele después de la lectura.

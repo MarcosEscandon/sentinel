@@ -144,14 +144,18 @@ class ScanDatabase:
         """Marca los hallazgos cuyo archivo se envió a cuarentena."""
         if not paths:
             return 0
-        placeholders = ",".join("?" for _ in paths)
-        query = f"UPDATE findings SET quarantined = 1 WHERE path IN ({placeholders})"
-        params: list[Any] = list(paths)
-        if scan_id is not None:
-            query += " AND scan_id = ?"
-            params.append(scan_id)
+        # SQL estático: los valores siempre van como parámetros enlazados.
+        if scan_id is None:
+            query = "UPDATE findings SET quarantined = 1 WHERE path = ?"
+            params_list = [(path,) for path in paths]
+        else:
+            query = "UPDATE findings SET quarantined = 1 WHERE path = ? AND scan_id = ?"
+            params_list = [(path, scan_id) for path in paths]
         with self._connect() as connection:
-            return connection.execute(query, params).rowcount
+            total = 0
+            for params in params_list:
+                total += connection.execute(query, params).rowcount
+            return total
 
 
 __all__ = ["Finding", "ScanDatabase", "ScanResult"]
