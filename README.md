@@ -320,7 +320,8 @@ production-ready completo. Quedan fuera de alcance o requieren infraestructura
 externa:
 
 * Filtro de sistema de archivos a nivel kernel: el monitor es de modo usuario y
-  puede perder eventos si se desborda el buffer de 64 KiB.
+  puede perder eventos si se desborda el buffer de 64 KiB. La arquitectura
+  propuesta está en `docs/KERNEL_FILTER_DESIGN.md`; no incluye código de driver.
 * Auditoría externa independiente: `sentinel audit` es una autoevaluación.
 * Certificado Authenticode EV/OV: aquí solo se usó un certificado autofirmado
   para validar el proceso. Confiándolo temporalmente solo al usuario se consiguió

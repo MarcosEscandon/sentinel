@@ -88,6 +88,7 @@ automática a incidentes.
   `ReadDirectoryChangesW`, `watchdog` o sondeo desde espacio de usuario. Un
   atacante con el mismo privilegio puede terminar el proceso, saturar la cola o
   actuar antes de que venza el *grace period*. No hay prevención de ejecución.
+  La propuesta de minifiltro está en `docs/KERNEL_FILTER_DESIGN.md`.
 - **Authenticode**: no se comprueba la firma de los PE. Un binario firmado por
   una entidad legítima o robada se analiza como cualquier otro archivo; no hay
   listas de editores de confianza ni reputación.
