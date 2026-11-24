@@ -349,4 +349,6 @@ Con `SENTINEL_PRIVATE_KEY=<ruta.pem>` el build también firma el manifiesto de
 datos con Ed25519. Consulta `packaging/README.md` para certificados, opciones
 onedir/onefile y smoke tests. Herramientas de diagnóstico: `python -m pytest`,
 `python -m ruff check .`, `python -m bandit -r sentinel -x tests`,
-`sentinel selftest`, `sentinel audit` y `python tools/benchmark.py`.
+`sentinel selftest`, `sentinel audit` y `python tools/benchmark.py`. En
+`.github/workflows/ci.yml` esas comprobaciones se ejecutan en Windows, con un
+job de SCA separado en Python 3.11.
