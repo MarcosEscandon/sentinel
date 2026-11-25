@@ -93,6 +93,7 @@ def save_config(
     signatures: str | Path | None = None,
     config_file: str | Path | None = None,
     poll_interval: float = 2.0,
+    public_key: str | Path | None = None,
 ) -> Path:
     """Save the configuration the service will use at startup."""
     if not paths:
@@ -105,6 +106,7 @@ def save_config(
         "signatures": str(signatures or DEFAULT_SIGNATURES),
         "config_file": str(config_file) if config_file else "",
         "poll_interval": poll_interval,
+        "public_key": str(public_key) if public_key else "",
     }
     destination = config_path(home)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -129,11 +131,11 @@ def load_config(home: str | Path) -> dict[str, Any]:
 def build_monitor(home: str | Path) -> Any:
     """Build the monitor from the saved configuration."""
     try:
+        from . import trust
         from .config import ScanConfig
         from .core.allowlist import AllowList
         from .core.logging import AuditLogger
         from .core.quarantine import Quarantine
-        from .engine.signatures import SignatureDatabase
         from .realtime import RealtimeMonitor
     except ImportError as exc:  # pragma: no cover - depends on optional extras
         raise ServiceUnavailable(f"Could not start real-time protection: {exc}") from exc
@@ -145,7 +147,13 @@ def build_monitor(home: str | Path) -> Any:
         if config_data.get("config_file")
         else ScanConfig()
     )
-    signatures = SignatureDatabase.load(config_data["signatures"])
+    configured_key = str(config_data.get("public_key") or "") or None
+    signatures = trust.load_database(
+        config_data["signatures"],
+        home=root,
+        public_key=configured_key,
+        require_signature=True,
+    )
     return RealtimeMonitor(
         paths=config_data["paths"],
         signatures=signatures,

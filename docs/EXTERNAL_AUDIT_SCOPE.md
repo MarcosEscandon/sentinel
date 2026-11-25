@@ -21,6 +21,9 @@ Questions the audit should answer:
    beyond what is documented?
 5. Are the claims in `README.md`, `THREAT_MODEL.md` and
    `KERNEL_FILTER_DESIGN.md` accurate, or are there controls that do not exist?
+6. Is the standard-library RFC 8032 fallback in `_ed25519.py` correct for
+   canonical encodings and small-order points, and interoperable with
+   `cryptography`?
 
 ## 2. Scope inclusions
 
@@ -28,7 +31,7 @@ Questions the audit should answer:
 | --- | --- | --- |
 | `sentinel/engine/` | `signatures.py`, `scanner.py`, `heuristics.py`, `containers.py`, `ole.py`, `vba.py`, `yara.py` | Hostile parsing, anti-bomb limits, regex timeout, evasion |
 | `sentinel/core/` | `allowlist.py`, `quarantine.py`, `logging.py`, `database.py`, `models.py` | HMAC, ACL, SQL injection, self-exclusion |
-| `sentinel/` root | `crypto.py`, `updates.py`, `integrity.py`, `audit.py`, `realtime.py`, `service.py`, `cli.py`, `gui.py`, `feeds.py`, `notify.py` | Trust chain, rollback, tampering and service control |
+| `sentinel/` root | `crypto.py`, `_ed25519.py`, `trust.py`, `updates.py`, `integrity.py`, `audit.py`, `realtime.py`, `service.py`, `cli.py`, `gui.py`, `feeds.py`, `notify.py` | Trust chain, Ed25519 fallback, fail-closed loading, rollback, tampering and service control |
 | `packaging/` | `build.ps1`, `sentinel.spec` | Manifest, included signature, secrets in the bundle |
 | `tests/` | Full suite and results | Coverage of security controls |
 | Documentation | README, THREAT_MODEL, PERFORMANCE and the two handoffs | Correspondence with the code |

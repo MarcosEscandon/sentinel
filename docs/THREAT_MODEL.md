@@ -77,8 +77,9 @@ response.
 | Self-detection of the product | `AllowList.for_self([home, package root])` | `core/allowlist.py`, CLI | A badly edited allowlist can exempt malicious paths |
 | Quarantine index modification | HMAC-SHA256 with a key outside the directory and `verify_all()` | `core/quarantine.py` | The key is stored in plaintext; an attacker with home access can read it and recompute the MAC |
 | Restore of an altered file | `verify_entry()` compares the stored size and SHA-256 | `core/quarantine.py` | Does not encrypt content; `delete()`/`prune()` still work even if alteration is detected |
-| Signature rollback | `check_rollback()` and increasing revision on updates | `engine/signatures.py`, `updates.py` | `SignatureDatabase.load()` by itself **does not** require a signature or revision |
-| Unsigned or corrupt update | Mandatory Ed25519 signature with public key, optional hash and atomic replacement with `.bak` | `updates.py` | The public key is distributed manually; no rotation, build pinning or Transparency Log |
+| Signature rollback | `check_rollback()` and increasing revision on updates | `engine/signatures.py`, `updates.py` | `SignatureDatabase.load()` by itself still does not require a signature; callers must use `trust.load_database()` |
+| Unsigned or corrupt update | Mandatory Ed25519 signature with public key, optional hash, atomic replacement with `.bak`, and installed `.sig`/`.pub` | `updates.py`, `trust.py` | The public key is distributed manually; no rotation, build pinning or Transparency Log |
+| Unsigned database at scan time | Fail-closed `trust.load_database()` in the CLI, GUI, monitor and service | `trust.py`, `cli.py`, `gui.py`, `service.py` | `--allow-unsigned-signatures` deliberately disables the check for local development |
 | Parse errors in a hostile file | Per-file error capture and size limits | `engine/scanner.py`, `ScanConfig` | An error is recorded as `errors`, it does not kill the scan |
 | Loss of visibility | JSONL events for scans, findings, quarantine and commands | `core/logging.py` | No signature, encryption, rotation or immutable retention |
 | Insecure configuration detected late | `audit.py` validates the database, signature, quarantine, logs, exclusions, backend and limits | `sentinel/audit.py` | It is a point-in-time check, not a runtime control |
@@ -99,12 +100,13 @@ response.
   no sandbox. A document with obfuscated code may evade the rules.
 - **Signature supply chain**: the private key is generated on disk
   (`crypto.generate_keypair`) with no encryption or HSM. The public key is
-  delivered manually with `--public-key`; there is no pinning, certificate
-  chain, rotation or signing of the tool itself. The included database does
-  carry `signatures.json.sig` and `signatures.json.pub`, but
-  `SignatureDatabase.load()` does not require them: an installation that copies
-  only `signatures.json` loads without local verification. `SENTINEL_PUBLIC_KEY`
-  / `signing.pub` is the convention `audit.py` uses to check that signature.
+  delivered manually with `--public-key`, `SENTINEL_PUBLIC_KEY`,
+  `<home>/signing.pub` or `<signatures>.pub`; there is no pinning, certificate
+  chain, rotation or signing of the tool itself. The included database carries
+  `signatures.json.sig` and `signatures.json.pub`, and all runtime entry points
+  verify them before scanning. `SignatureDatabase.load()` is still a low-level
+  helper that does not verify signatures, and
+  `--allow-unsigned-signatures` bypasses the runtime check for development.
 - **False positives**: the `SENTINEL_TEST_MARKER` rules and entropy heuristics
   are synthetic. Self-exclusion covers entire directories, so a badly placed
   exclusion creates a blind spot. There is no *sandbox*, reputation or vendor
@@ -131,7 +133,8 @@ sentinel --signatures C:\ProgramData\Sentinel\signatures.json signatures sign `
   --key C:\secure\private.pem `
   --output C:\ProgramData\Sentinel\signatures.json.sig
 
-# 3. Configure the trust anchor for the audit.
+# 3. Install the trust anchor (also used by every runtime scan).
+Copy-Item C:\secure\public.pem C:\ProgramData\Sentinel\signing.pub
 $env:SENTINEL_PUBLIC_KEY = 'C:\ProgramData\Sentinel\signing.pub'
 
 # 4. Run the self-assessment: exit 0 if all pass, 2 on failures.
@@ -163,7 +166,7 @@ The scope of an independent review is in `docs/EXTERNAL_AUDIT_SCOPE.md`.
 In addition to the runtime self-assessment, the following were run:
 
 * `python -m ruff check .`: no warnings.
-* `python -m bandit -r sentinel -x tests`: **0 warnings** over 6026 lines
+* `python -m bandit -r sentinel -x tests`: **0 warnings** over 7472 lines
   (`docs/bandit-results.json`). Bandit flagged three points that were fixed
   rather than silenced: the SQL query with dynamic placeholders in
   `database.mark_quarantined()` was replaced with static SQL using bound
@@ -195,7 +198,9 @@ finds logical flaws nor guarantees product security.
 - [ ] Store the private key off the machine (or in a protected store) and
       distribute the public key through a verified channel.
 - [ ] Sign `signatures.json` and check that `<base>.sig` exists with 64 bytes.
-- [ ] Configure `SENTINEL_PUBLIC_KEY` (or `signing.pub`) before auditing.
+- [ ] Install `signatures.json.pub` and/or configure `SENTINEL_PUBLIC_KEY` before
+      scanning or auditing; confirm a scan fails closed when the `.sig` is removed.
+- [ ] Never pass `--allow-unsigned-signatures` on a production endpoint.
 - [ ] Update only via `sentinel signatures update --public-key ...` over HTTPS
       and, if possible, with `--sha256`; review revisions and `.bak`.
 - [ ] Run `sentinel audit` and require exit 0, a score of 100 and zero

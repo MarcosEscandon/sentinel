@@ -32,14 +32,15 @@ campaign; both can be imported with `sentinel feeds import`.
 cd C:\Users\marco\Mine\sentinel
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev,signing,hardening,realtime]"  # tests, Ed25519, regex, watchdog
-pip install -e ".[yara]"                           # optional: YARA rules
-pip install -e ".[service]"                        # optional: Windows service
+pip install -e ".[dev,hardening,realtime]"  # tests, regex, watchdog
+pip install -e ".[signing]"                 # optional: preferred Ed25519 backend
+pip install -e ".[yara]"                    # optional: YARA rules
+pip install -e ".[service]"                 # optional: Windows service
 ```
 
-`signing` (`cryptography`) is required to verify the Ed25519 signature on
-updates. `hardening` adds a timeout to content rules, but is not a requirement
-for `sentinel signatures update`. Without `regex`, content rules work but have
+Ed25519 verification works with the standard library alone; the optional
+`signing` extra (`cryptography`) is the preferred, faster backend. `hardening`
+adds a timeout to content rules. Without `regex`, content rules work but have
 no timeout. Without `watchdog`, monitoring uses the native Windows backend
 (`ReadDirectoryChangesW` via `ctypes`) and, if that is also unavailable,
 dependency-free polling.
@@ -97,7 +98,16 @@ sentinel signatures update --url https://example.local/signatures.json --public-
 
 The `--sha256` option is additional; the Ed25519 signature and public key are
 mandatory. The client rejects any revision lower than or equal to the installed
-one. The JSON must include `"revision": <integer>`.
+one. The JSON must include `"revision": <integer>`. An update installs the JSON
+together with its `.sig` and the trusted `.pub`, so subsequent scans keep
+verifying it.
+
+Every production entry point (CLI `scan`, GUI, monitor and Windows service) now
+loads the database through `sentinel.trust.load_database()` and **fails closed**
+if the signature is missing or invalid. The trusted key is resolved in this
+order: explicit `--public-key`, `SENTINEL_PUBLIC_KEY`, `<home>/signing.pub`,
+`<signatures>.pub`. `--allow-unsigned-signatures` is an unsafe development-only
+escape hatch; it must never be used in production.
 
 ### Containers, feeds and auditing
 
@@ -177,7 +187,9 @@ sentinel/
 ├── sentinel/
 │   ├── cli.py               # subcommands and presentation
 │   ├── config.py            # ScanConfig
-│   ├── crypto.py            # Ed25519 keys and verification
+│   ├── crypto.py            # Ed25519 keys and verification (backend selector)
+│   ├── _ed25519.py          # stdlib RFC 8032 fallback with PEM support
+│   ├── trust.py             # fail-closed database loading and key resolution
 │   ├── feeds.py             # IOC converter (CSV/JSON/MISP/hashes)
 │   ├── realtime.py          # native/watchdog/polling monitor
 │   ├── notify.py            # toast/native dialog notifications

@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from . import crypto
+from . import crypto, trust
 from .config import ScanConfig
 from .core.allowlist import AllowList
 from .core.logging import AuditLogger
@@ -31,7 +31,7 @@ from .core.quarantine import Quarantine
 from .engine.signatures import SignatureDatabase
 from .realtime import available_backends
 
-PUBLIC_KEY_ENV = "SENTINEL_PUBLIC_KEY"
+PUBLIC_KEY_ENV = trust.PUBLIC_KEY_ENV
 """Environment variable with the path to the trusted public key."""
 
 AUDIT_EVENT = "audit.check"
@@ -155,17 +155,7 @@ def _check_signatures_valid(signatures: Path) -> _CheckResult:
 
 def _public_key_candidates(home: Path, signatures: Path) -> list[Path]:
     """Returns the supported locations for the trusted public key."""
-    candidates: list[Path] = []
-    configured = os.environ.get(PUBLIC_KEY_ENV, "").strip()
-    if configured:
-        candidates.append(Path(configured))
-    candidates.extend(
-        [
-            home / "signing.pub",
-            Path(str(signatures) + ".pub"),
-        ]
-    )
-    return candidates
+    return trust.public_key_candidates(home, signatures)
 
 
 def _check_signatures_signed(home: Path, signatures: Path) -> _CheckResult:

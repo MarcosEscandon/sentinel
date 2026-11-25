@@ -5,9 +5,11 @@ Chain of trust:
 1. Download the JSON and its separate Ed25519 signature (``<url>.sig`` by default).
 2. Verify the signature with a mandatory trusted public key.
 3. Validate the schema and that the revision is newer than the installed one.
-4. Replace the file atomically, keeping a ``.bak`` copy.
+4. Install the JSON together with its ``.sig`` and trusted ``.pub`` so that the
+   scanner can keep verifying it after the update, keeping a ``.bak`` copy.
 
-If any step fails, the installed file remains intact.
+If any step fails before installation, the installed file remains intact. If a
+later step fails, verification fails closed rather than accepting the database.
 """
 
 from __future__ import annotations
@@ -59,8 +61,9 @@ def update_signatures(
         raise crypto.SigningUnavailable(
             "cryptography is not installed. Install it with: pip install -e '.[signing]'"
         )
-    if not Path(public_key_path).is_file():
-        raise FileNotFoundError(f"Trusted public key not found: {public_key_path}")
+    key_path = Path(public_key_path)
+    if not key_path.is_file():
+        raise FileNotFoundError(f"Trusted public key not found: {key_path}")
 
     destination = Path(target)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -71,7 +74,7 @@ def update_signatures(
     if len(signature) != 64:
         raise ValueError(f"Invalid Ed25519 signature: expected 64 bytes, received {len(signature)}")
 
-    if not crypto.verify_payload(payload, signature, public_key_path):
+    if not crypto.verify_payload(payload, signature, key_path):
         raise ValueError("Invalid Ed25519 signature: the signature database has NOT been installed")
 
     digest = hashlib.sha256(payload).hexdigest()
@@ -82,7 +85,7 @@ def update_signatures(
 
     new_database = SignatureDatabase.from_dict(json.loads(payload.decode("utf-8")))
     current = (
-        SignatureDatabase.load(destination)
+        SignatureDatabase.from_dict(json.loads(destination.read_text(encoding="utf-8")))
         if destination.is_file()
         else SignatureDatabase.empty()
     )
@@ -93,19 +96,24 @@ def update_signatures(
             f"than the installed revision ({current.revision})"
         )
 
-    handle, temp_name = tempfile.mkstemp(
-        prefix="sentinel-sig-", suffix=".json", dir=str(destination.parent)
-    )
-    temp_path = Path(temp_name)
-    try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(payload)
+    # Install JSON, signature, and trust anchor from one staging directory. The
+    # JSON is replaced last; an interruption before that keeps the old database,
+    # while an interruption afterwards fails closed during verification.
+    with tempfile.TemporaryDirectory(
+        prefix="sentinel-update-", dir=str(destination.parent)
+    ) as staging_name:
+        staging = Path(staging_name)
+        staged_json = staging / destination.name
+        staged_sig = staging / f"{destination.name}.sig"
+        staged_pub = staging / f"{destination.name}.pub"
+        staged_json.write_bytes(payload)
+        staged_sig.write_bytes(signature)
+        staged_pub.write_bytes(key_path.read_bytes())
         if destination.exists():
             shutil.copy2(destination, destination.with_suffix(destination.suffix + ".bak"))
-        temp_path.replace(destination)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+        os.replace(staged_sig, Path(f"{destination}.sig"))
+        os.replace(staged_pub, Path(f"{destination}.pub"))
+        os.replace(staged_json, destination)
 
     return {
         "sha256": digest,

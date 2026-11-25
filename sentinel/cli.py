@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from . import __version__, crypto
+from . import __version__, crypto, trust
 from . import service as windows_service
 from .config import ScanConfig
 from .core.allowlist import AllowList
@@ -108,6 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config-file", help="Path to a scanner configuration JSON file.")
     parser.add_argument("--log-file", help="Audit JSONL file.")
     parser.add_argument("--no-log", action="store_true", help="Disable audit logging.")
+    parser.add_argument(
+        "--allow-unsigned-signatures",
+        action="store_true",
+        help="Load an unsigned or untrusted signature database (unsafe; development only).",
+    )
 
     # Global options are also accepted after the subcommand. SUPPRESS prevents
     # subparser defaults from overriding the global values.
@@ -117,10 +122,14 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--config-file", default=argparse.SUPPRESS)
     common.add_argument("--log-file", default=argparse.SUPPRESS)
     common.add_argument("--no-log", action="store_true", default=argparse.SUPPRESS)
+    common.add_argument("--allow-unsigned-signatures", action="store_true", default=argparse.SUPPRESS)
 
     sub = parser.add_subparsers(dest="command", required=True)
 
     scan = sub.add_parser("scan", help="Scan files or directories.", parents=[common])
+    scan.add_argument(
+        "--public-key", help="Trusted Ed25519 PEM key for the signature database."
+    )
     scan.add_argument("paths", nargs="+", help="Files or directories to scan.")
     scan.add_argument("--no-heuristics", action="store_true", help="Disable heuristics.")
     scan.add_argument("--no-yara", action="store_true", help="Disable YARA rules.")
@@ -199,6 +208,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--startup", choices=windows_service.STARTUP_MODES, default="auto"
     )
     svc_install.add_argument("--poll-interval", type=float, default=2.0)
+    svc_install.add_argument(
+        "--public-key",
+        help="Trusted Ed25519 PEM key stored in the service configuration.",
+    )
     svc.add_parser("remove", help="Uninstall the service.")
     svc_start = svc.add_parser("start", help="Start the service.")
     svc_start.add_argument("--wait", type=int, default=15)
@@ -208,6 +221,9 @@ def build_parser() -> argparse.ArgumentParser:
     svc.add_parser("run", help="Run the monitor in the foreground (debugging).")
 
     monitor = sub.add_parser("monitor", help="Monitor paths in real time.", parents=[common])
+    monitor.add_argument(
+        "--public-key", help="Trusted Ed25519 PEM key for the signature database."
+    )
     monitor.add_argument("paths", nargs="+", help="Paths to monitor.")
     monitor.add_argument("--poll-interval", type=float, default=2.0)
     monitor.add_argument("--grace-period", type=float, default=0.5)
@@ -224,7 +240,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Desktop notifications on detection (default: automatic).",
     )
 
-    sub.add_parser("gui", help="Open the graphical interface (tkinter).", parents=[common])
+    gui = sub.add_parser("gui", help="Open the graphical interface (tkinter).", parents=[common])
+    gui.add_argument("--public-key", help="Trusted Ed25519 PEM key for the signature database.")
 
     history = sub.add_parser("history", help="View scan history.", parents=[common])
     history.add_argument("--limit", type=int, default=20)
@@ -325,6 +342,16 @@ def _load_yara(config: ScanConfig) -> object | None:
         return None
 
 
+def _load_signatures(args: argparse.Namespace) -> SignatureDatabase:
+    """Load the database with fail-closed signature verification by default."""
+    return trust.load_database(
+        args.signatures,
+        home=args.home,
+        public_key=getattr(args, "public_key", None),
+        require_signature=not getattr(args, "allow_unsigned_signatures", False),
+    )
+
+
 def print_report(result: ScanResult, colors: Colors, *, quiet: bool = False) -> None:
     findings = result.sorted_findings()
     print(f"\n{colors.bold}SCAN REPORT{colors.reset}")
@@ -358,7 +385,7 @@ def print_report(result: ScanResult, colors: Colors, *, quiet: bool = False) -> 
 
 def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> int:
     config = _load_config(args)
-    signatures = SignatureDatabase.load(args.signatures)
+    signatures = _load_signatures(args)
     yara_engine = _load_yara(config)
     home = Path(args.home)
     database = ScanDatabase(home / "history.db")
@@ -542,7 +569,7 @@ def cmd_signatures(args: argparse.Namespace, logger: AuditLogger) -> int:
         print(f"  signatures: {info['stats']['hashes']} hashes")
         return EXIT_CLEAN
     try:
-        database = SignatureDatabase.load(path)
+        database = _load_signatures(args)
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print(f"Invalid signature database: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -578,7 +605,7 @@ def cmd_selftest(args: argparse.Namespace, colors: Colors) -> int:
     (directory / "marker.txt").write_bytes(b"SENTINEL_TEST_MARKER test payload\n")
     (directory / "random.bin").write_bytes(os.urandom(8192))
 
-    signatures = SignatureDatabase.load(Path(args.signatures))
+    signatures = _load_signatures(args)
     config = ScanConfig(entropy_threshold=7.0, entropy_min_size=1024)
     result = Scanner(signatures, config, yara=None).scan([directory])
     rules = {finding.rule_id for finding in result.findings}
@@ -644,7 +671,7 @@ def cmd_monitor(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -
     from .realtime import RealtimeMonitor, available_backends
 
     config = _load_config(args)
-    signatures = SignatureDatabase.load(args.signatures)
+    signatures = _load_signatures(args)
     home = Path(args.home)
     try:
         notifier = Notifier(args.notify)
@@ -708,7 +735,13 @@ def cmd_gui(args: argparse.Namespace) -> int:
         from .gui import SentinelGUI
 
         config = ScanConfig.from_file(args.config_file) if args.config_file else ScanConfig()
-        SentinelGUI(args.home, args.signatures, config=config).run()
+        SentinelGUI(
+            args.home,
+            args.signatures,
+            config=config,
+            public_key=getattr(args, "public_key", None),
+            require_signature=not getattr(args, "allow_unsigned_signatures", False),
+        ).run()
     except (ImportError, OSError, ValueError, TypeError) as exc:
         print(f"Could not open the graphical interface: {exc}", file=sys.stderr)
         return EXIT_ERROR
@@ -787,6 +820,7 @@ def cmd_service(args: argparse.Namespace, logger: AuditLogger) -> int:
                 signatures=args.signatures,
                 config_file=args.config_file,
                 poll_interval=args.poll_interval,
+                public_key=getattr(args, "public_key", None),
             )
             windows_service.install(args.home, startup=args.startup)
             logger.emit("service.install", config=str(destination), startup=args.startup)

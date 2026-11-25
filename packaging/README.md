@@ -34,9 +34,10 @@ python -m pip install --upgrade pip
 pip install -e ".[dev,signing,hardening,service,realtime]"
 ```
 
-`dev`, `signing` and `hardening` cover tests, Ed25519 and `regex` with a timeout.
-`service` and `realtime` add Windows service management and `watchdog`; the
-monitor also works without them using polling or the native
+`dev` and `hardening` cover tests and `regex` with a timeout; `signing` adds the
+preferred Ed25519 backend, while verification also works with the standard
+library. `service` and `realtime` add Windows service management and `watchdog`;
+the monitor also works without them using polling or the native
 `ReadDirectoryChangesW` backend on Windows.
 
 ## 2. Build
@@ -179,7 +180,9 @@ distinct, complementary controls:
   the private key and is not an old version (revision control).
 
 An attacker could replace the signature database even if the exe is correctly
-signed. Therefore, in production, always update with the trusted public key:
+signed. Every runtime entry point therefore fails closed when the database is
+unsigned or was modified. In production, always update with the trusted public
+key:
 
 ```powershell
 sentinel signatures update --url https://example.local/signatures.json --public-key public.pem

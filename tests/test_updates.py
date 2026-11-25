@@ -1,9 +1,10 @@
 import io
 import json
+from pathlib import Path
 
 import pytest
 
-from sentinel import crypto, updates
+from sentinel import crypto, trust, updates
 from sentinel.engine.signatures import SignatureDatabase
 from sentinel.updates import update_signatures
 
@@ -72,6 +73,9 @@ def test_signed_update_succeeds(tmp_path, monkeypatch):
 
     assert info["revision"] == 2
     assert SignatureDatabase.load(target).revision == 2
+    assert trust.load_database(target, public_key=public).revision == 2
+    assert Path(f"{target}.sig").is_file()
+    assert Path(f"{target}.pub").read_bytes() == public.read_bytes()
     assert (target.with_suffix(".json.bak")).is_file()
 
 

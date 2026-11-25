@@ -19,7 +19,17 @@ def test_save_and_load_config(tmp_path):
     assert config["paths"] == ["C:\\Users\\marco\\Downloads", "D:\\docs"]
     assert config["signatures"] == SIGNATURES
     assert config["poll_interval"] == 2.0
+    assert config["public_key"] == ""
     assert json.loads(path.read_text(encoding="utf-8"))["version"] == 1
+
+
+def test_save_config_with_public_key(tmp_path):
+    home = tmp_path / "home"
+    key = tmp_path / "trusted.pub"
+    windows_service.save_config(
+        home, paths=["C:\\tmp"], public_key=key, signatures=SIGNATURES
+    )
+    assert windows_service.load_config(home)["public_key"] == str(key)
 
 
 def test_config_validation(tmp_path):

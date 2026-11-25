@@ -17,14 +17,13 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import __version__
+from . import __version__, trust
 from .config import ScanConfig
 from .core.database import ScanDatabase
 from .core.logging import AuditLogger
 from .core.models import ScanResult
 from .core.quarantine import Quarantine, QuarantineEntry, QuarantineIntegrityError
 from .engine.scanner import Scanner, summarize
-from .engine.signatures import SignatureDatabase
 
 if TYPE_CHECKING:  # Annotations do not require Tk in headless mode.
     from tkinter import ttk
@@ -61,6 +60,10 @@ class SentinelGUI:
         If ``True``, no window is created: only the logic is initialized.
     config:
         Scanner configuration; defaults to ``ScanConfig()``.
+    public_key:
+        Optional trusted Ed25519 public key for the signature database.
+    require_signature:
+        Verify the database signature before scanning (on by default).
     """
 
     def __init__(
@@ -71,12 +74,16 @@ class SentinelGUI:
         root: Any | None = None,
         headless: bool = False,
         config: ScanConfig | None = None,
+        public_key: str | Path | None = None,
+        require_signature: bool = True,
     ) -> None:
         self.home = Path(home) if home is not None else DEFAULT_HOME
         self.signatures_path = (
             Path(signatures) if signatures is not None else DEFAULT_SIGNATURES
         )
         self.config = config or ScanConfig()
+        self.public_key = Path(public_key) if public_key is not None else None
+        self.require_signature = require_signature
         self.database = ScanDatabase(self.home / "history.db")
         self.quarantine = Quarantine(self.home / "quarantine")
         self.logger = AuditLogger(self.home / "audit.jsonl")
@@ -361,8 +368,13 @@ class SentinelGUI:
         return moved
 
     def _build_scanner(self) -> Scanner:
-        """Load signatures and build a ``Scanner`` with the configured settings."""
-        signatures = SignatureDatabase.load(self.signatures_path)
+        """Load verified signatures and build a ``Scanner`` with the configured settings."""
+        signatures = trust.load_database(
+            self.signatures_path,
+            home=self.home,
+            public_key=self.public_key,
+            require_signature=self.require_signature,
+        )
         # YARA is optional; the GUI relies on signatures, content, and heuristics.
         return Scanner(signatures, self.config, yara=None)
 

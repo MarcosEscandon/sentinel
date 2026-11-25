@@ -24,6 +24,34 @@ jobs:
         run: sentinel selftest
       - name: Security audit
         run: sentinel audit
+      - name: Verify data integrity manifest
+        shell: pwsh
+        run: |
+          python -c "from sentinel import crypto; crypto.generate_keypair('ci-private.pem', 'ci-public.pem')"
+          sentinel integrity build sentinel/data --output ci-manifest.json
+          sentinel signatures --signatures ci-manifest.json sign --key ci-private.pem --output ci-manifest.json.sig
+          sentinel integrity verify sentinel/data --manifest ci-manifest.json --public-key ci-public.pem
+      - name: End-to-end detection and quarantine
+        shell: pwsh
+        run: |
+          $sentinelHome = Join-Path $env:RUNNER_TEMP 'sentinel-home'
+          $targetDir = Join-Path $env:RUNNER_TEMP 'sentinel-e2e'
+          New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+          Copy-Item sentinel/data/iocs/eicar.com (Join-Path $targetDir 'eicar.com')
+          sentinel --home $sentinelHome scan $targetDir --quarantine-found --yes --quiet
+          if ($LASTEXITCODE -ne 1) { throw "Expected exit code 1 for an EICAR finding, got $LASTEXITCODE" }
+          sentinel --home $sentinelHome quarantine verify
+          if ($LASTEXITCODE -ne 0) { throw "Quarantine verification failed with $LASTEXITCODE" }
+      - name: Verify fail-closed signature loading
+        shell: pwsh
+        run: |
+          $sentinelHome = Join-Path $env:RUNNER_TEMP 'sentinel-failclosed-home'
+          $database = Join-Path $env:RUNNER_TEMP 'unsigned-signatures.json'
+          $clean = Join-Path $env:RUNNER_TEMP 'sentinel-clean.txt'
+          Copy-Item sentinel/data/signatures.json $database
+          Set-Content -Path $clean -Value 'nothing'
+          sentinel --home $sentinelHome --signatures $database scan $clean --quiet
+          if ($LASTEXITCODE -ne 2) { throw "Expected exit code 2 for an unsigned database, got $LASTEXITCODE" }
 
   sca:
     runs-on: windows-latest

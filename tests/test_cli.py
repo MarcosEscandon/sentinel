@@ -72,3 +72,30 @@ def test_cli_signatures_validate_and_feeds_dry_run(tmp_path, capsys):
     events = [json.loads(line) for line in (home / "audit.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(item["event"] == "feeds.import" and item["dry_run"] for item in events)
     capsys.readouterr()
+
+
+def test_cli_rejects_unsigned_database_by_default(tmp_path, capsys):
+    home = tmp_path / "home"
+    database = tmp_path / "signatures.json"
+    database.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "version": "test",
+                "revision": 1,
+                "hashes": {},
+                "filenames": [],
+                "content": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    clean = tmp_path / "clean.txt"
+    clean.write_text("nothing", encoding="utf-8")
+    args = ["--home", str(home), "--signatures", str(database), "scan", str(clean), "--quiet"]
+
+    assert main(args) == 2
+    assert "No trusted Ed25519 public key" in capsys.readouterr().err
+
+    assert main([*args, "--allow-unsigned-signatures"]) == 0
+    capsys.readouterr()
