@@ -20,6 +20,25 @@ class YaraUnavailable(RuntimeError):
     """Raised when YARA is requested but the module is not installed."""
 
 
+def _string_indicator(item: Any) -> str | None:
+    """Normalize a YARA string match across yara-python API versions.
+
+    yara-python 4.5 returns ``StringMatch(identifier, instances)`` objects;
+    older releases returned ``(offset, identifier, data)`` tuples.
+    """
+    identifier = getattr(item, "identifier", None)
+    instances = getattr(item, "instances", None)
+    if identifier is not None and instances is not None:
+        for instance in instances[:1]:
+            offset = getattr(instance, "offset", None)
+            if offset is not None:
+                return f"{identifier}:{offset}"
+        return str(identifier)
+    if isinstance(item, (tuple, list)) and len(item) >= 2:
+        return f"{item[1]}:{item[0]}"
+    return None
+
+
 class YaraEngine:
     """Compiles a set of YARA rules and applies them to a sample."""
 
@@ -63,9 +82,12 @@ class YaraEngine:
             rule_id = str(meta.get("id") or match.rule)
             severity = Severity.parse(meta.get("severity", "medium"))
             description = str(meta.get("description") or f"YARA rule {match.rule}")
-            indicators = tuple(
-                f"{namespace}:{offset}" for namespace, offset, _ in (match.strings or [])[:8]
-            )
+            indicators_list: list[str] = []
+            for item in (match.strings or [])[:8]:
+                indicator = _string_indicator(item)
+                if indicator is not None:
+                    indicators_list.append(indicator)
+            indicators = tuple(indicators_list)
             hits.append(
                 RuleHit(
                     rule_id=rule_id,

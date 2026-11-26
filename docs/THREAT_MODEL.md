@@ -112,13 +112,18 @@ response.
   exclusion creates a blind spot. There is no *sandbox*, reputation or vendor
   confirmation.
 - **Windows permissions**: `os.stat` does not expose ACLs and usually shows
-  mode `0666` even with a restrictive ACL. `quarantine.key_permissions`
-  explicitly declares this limitation and **never changes permissions**: the
-  ACL must be reviewed with `icacls`.
+  mode `0666` even with a restrictive ACL. `security_fs.restrict_permissions()`
+  now applies an `icacls` ACE granting only the current user on Windows (and
+  `chmod` 0600/0700 on POSIX) to audit logs, quarantine, history, reports and
+  generated keys. Verify the effective ACL with `icacls`; POSIX modes are
+  covered by tests.
 - **Attacker persistence**: `audit.jsonl`, `history.db` and reports are not
-  signed; a user with home access can delete or edit them.
-- **Quarantine**: files are renamed to UUIDs, not encrypted. Any user process
-  can read them directly from `quarantine/files`.
+  signed or immutable; a user with home access can still delete or edit them.
+  Retention is bounded (30 days) and the files are private to the current user,
+  which reduces but does not eliminate this risk.
+- **Quarantine**: files are renamed to UUIDs, not encrypted. ACLs restrict them
+  to the current user, but a process running as that same user can still read
+  them; encryption remains an open item.
 
 ## Using the self-assessment
 

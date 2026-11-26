@@ -26,6 +26,7 @@ from .engine.signatures import SignatureDatabase
 from .engine.yara import YaraEngine, YaraUnavailable
 from .feeds import import_feed
 from .integrity import build_manifest, verify_manifest, verify_signatures_bundle
+from .security_fs import DEFAULT_RETENTION_DAYS, restrict_permissions, secure_write_text
 from .updates import update_signatures
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -321,13 +322,28 @@ def _known_reports(home: Path) -> list[str]:
 
 def _remember_report(home: Path, path: str) -> None:
     home.mkdir(parents=True, exist_ok=True)
+    restrict_permissions(home)
     resolved = str(Path(path).resolve())
-    known = _known_reports(home)
-    if resolved in known:
-        return
-    known.append(resolved)
-    _report_registry(home).write_text(
-        json.dumps(known[-200:], indent=2, ensure_ascii=False), encoding="utf-8"
+
+    # Only files Sentinel registered in reports.json are eligible for cleanup;
+    # arbitrary paths chosen by the user are never deleted by a glob.
+    cutoff = time.time() - DEFAULT_RETENTION_DAYS * 86400
+    known: list[str] = []
+    for item in _known_reports(home):
+        candidate = Path(item)
+        try:
+            if candidate.is_file() and candidate.stat().st_mtime < cutoff:
+                candidate.unlink()
+                continue
+        except OSError:
+            pass
+        known.append(item)
+
+    if resolved not in known:
+        known.append(resolved)
+    secure_write_text(
+        _report_registry(home),
+        json.dumps(known[-200:], indent=2, ensure_ascii=False),
     )
 
 
@@ -471,7 +487,7 @@ def cmd_scan(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -> i
         if args.json_path == "-":
             print(payload)
         else:
-            Path(args.json_path).write_text(payload, encoding="utf-8")
+            secure_write_text(Path(args.json_path), payload)
             _remember_report(home, args.json_path)
             print(f"  JSON report: {args.json_path}")
 
@@ -532,7 +548,9 @@ def cmd_signatures(args: argparse.Namespace, logger: AuditLogger) -> int:
     if args.action == "sign":
         try:
             signature = crypto.sign_payload(path.read_bytes(), args.key)
-            Path(args.output).write_bytes(signature)
+            output = Path(args.output)
+            output.write_bytes(signature)
+            restrict_permissions(output)
         except (OSError, ValueError, TypeError, crypto.SigningUnavailable) as exc:
             print(f"Signing failed: {exc}", file=sys.stderr)
             return EXIT_ERROR

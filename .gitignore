@@ -10,3 +10,20 @@ packaging/tools/
 packaging/keys/
 *.pem
 .hypothesis/
+
+# Generated local state: scanned paths, report contents and malware samples.
+# requirements.lock is intentionally NOT ignored: it is the hash-pinned lockfile.
+audit.jsonl
+audit.check
+history.db
+history.db-*
+reports.json
+report*.json
+quarantine/
+quarantine.key
+*.qtn
+signing.pub
+ci-*.pem
+ci-manifest*
+requirements-audit.txt
+*.log

@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import _ed25519 as _pure
+from .security_fs import restrict_permissions
 
 try:  # pragma: no cover - depends on the environment
     from cryptography.exceptions import InvalidSignature as _InvalidSignature
@@ -39,7 +40,8 @@ def backend() -> str:
 def generate_keypair(private_path: str | Path, public_path: str | Path) -> None:
     """Generate an Ed25519 key pair and save it in PEM format.
 
-    The private key is created with restricted permissions on POSIX systems.
+    The private key is created with restricted permissions (POSIX mode and a
+    Windows ACL that grants only the current user).
     """
     private = Path(private_path)
     public = Path(public_path)
@@ -64,6 +66,7 @@ def generate_keypair(private_path: str | Path, public_path: str | Path) -> None:
         private.chmod(0o600)
     except OSError:
         pass
+    restrict_permissions(private)
     public.write_bytes(public_bytes)
 
 

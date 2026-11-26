@@ -6,9 +6,11 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ..security_fs import DEFAULT_RETENTION_DAYS, restrict_permissions
 from .models import Finding, ScanResult
 
 _SCHEMA = """
@@ -45,6 +47,9 @@ class ScanDatabase:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(_SCHEMA)
+        # Findings include scanned paths and hashes, so the history DB is private.
+        restrict_permissions(self.path.parent)
+        restrict_permissions(self.path)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -156,6 +161,15 @@ class ScanDatabase:
             for params in params_list:
                 total += connection.execute(query, params).rowcount
             return total
+
+    def prune(self, days: int = DEFAULT_RETENTION_DAYS) -> int:
+        """Delete scans (and their findings) older than ``days`` days."""
+        if days < 0:
+            raise ValueError("days must be >= 0")
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM scans WHERE finished_at < ?", (cutoff,))
+            return cursor.rowcount
 
 
 __all__ = ["Finding", "ScanDatabase", "ScanResult"]

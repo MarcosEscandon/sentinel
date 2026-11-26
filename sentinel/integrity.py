@@ -18,6 +18,7 @@ from typing import Any
 
 from . import crypto
 from .core.models import utc_now
+from .security_fs import secure_write_text
 
 ALGORITHM = "sha256"
 _READ_CHUNK = 1024 * 1024
@@ -182,8 +183,9 @@ def build_manifest(
         "files": records,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    secure_write_text(
+        output_path,
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
     )
     return manifest
 

@@ -357,6 +357,20 @@ external infrastructure:
 * Signature database: EICAR, 10 public hashes and synthetic markers; it does not
   replace an up-to-date commercial database.
 
+## Security and compliance
+
+The hardening baseline and control mapping against **SOC 2**, **ISO/IEC
+27001:2022**, **ISO/IEC 27701** and the Argentine **DA 641/2021 / PSI Modelo
+(DNC 1/2022)** baseline is in [HARDENING.md](./HARDENING.md). Private
+vulnerability reporting, sample handling and coordinated disclosure are in
+[SECURITY.md](./SECURITY.md). Generated state (`audit.jsonl`, `history.db`,
+`reports.json`, `quarantine/`, keys) is restricted to the current user, retained
+for at most 30 days where applicable, and excluded from git; dependencies are
+hash-locked in `requirements.lock`.
+
+These documents are a **gap assessment**, not a certification, audit report or
+attestation.
+
 ## Building (Windows x64)
 
 ```powershell

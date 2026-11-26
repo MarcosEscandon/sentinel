@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ..security_fs import restrict_permissions
 from .models import utc_now
 
 _UUID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -86,6 +87,9 @@ class Quarantine:
 
     def _ensure(self) -> None:
         self.files_dir.mkdir(parents=True, exist_ok=True)
+        # Samples are live malware: keep the store and its index private.
+        restrict_permissions(self.directory)
+        restrict_permissions(self.files_dir)
 
     def _load_key(self) -> bytes:
         try:
@@ -103,6 +107,7 @@ class Quarantine:
             return self._load_key()
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)
+        restrict_permissions(self.key_path)
         return data
 
     @staticmethod
@@ -152,7 +157,9 @@ class Quarantine:
             "mac": hmac.new(self._load_key(), self._canonical(entries), hashlib.sha256).hexdigest(),
         }
         temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        restrict_permissions(temporary)
         temporary.replace(self.index_path)
+        restrict_permissions(self.index_path)
 
     def add(self, path: str | Path, reason: str = "", sha256: str = "") -> str:
         """Moves a file to quarantine and returns its identifier."""
@@ -165,6 +172,7 @@ class Quarantine:
         stored = self.files_dir / f"{entry_id}.qtn"
         size = source.stat().st_size
         shutil.move(str(source), str(stored))
+        restrict_permissions(stored)
         entry = QuarantineEntry(
             id=entry_id,
             original_path=str(source.resolve()),

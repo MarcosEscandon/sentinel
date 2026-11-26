@@ -15,6 +15,8 @@ import os
 import re
 from pathlib import Path
 
+from .security_fs import restrict_permissions
+
 P = 2**255 - 19
 L = 2**252 + 27742317777372353535851937790883648493
 D = (-121665 * pow(121666, P - 2, P)) % P
@@ -281,7 +283,7 @@ def generate_pem_keypair() -> tuple[bytes, bytes]:
 
 
 def write_keypair(private_path: str | Path, public_path: str | Path) -> None:
-    """Write a PEM key pair with restricted permissions on POSIX systems."""
+    """Write a PEM key pair restricted to the current OS user."""
     private_pem, public_pem = generate_pem_keypair()
     private = Path(private_path)
     public = Path(public_path)
@@ -292,6 +294,7 @@ def write_keypair(private_path: str | Path, public_path: str | Path) -> None:
         private.chmod(0o600)
     except OSError:
         pass
+    restrict_permissions(private)
     public.write_bytes(public_pem)
 
 

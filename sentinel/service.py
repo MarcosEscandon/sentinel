@@ -23,6 +23,8 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from .security_fs import secure_write_text
+
 SERVICE_NAME = "SentinelRealtime"
 DISPLAY_NAME = "Sentinel Real-time Protection"
 DESCRIPTION = "Sentinel real-time protection (signatures + heuristics)."
@@ -60,7 +62,7 @@ def save_service_home(home: str | Path) -> None:
     if os.name != "nt":
         return
     SERVICE_HOME_POINTER.parent.mkdir(parents=True, exist_ok=True)
-    SERVICE_HOME_POINTER.write_text(str(Path(home).resolve()), encoding="utf-8")
+    secure_write_text(SERVICE_HOME_POINTER, str(Path(home).resolve()))
 
 
 def load_service_home() -> Path:
@@ -110,7 +112,7 @@ def save_config(
     }
     destination = config_path(home)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    secure_write_text(destination, json.dumps(payload, indent=2, ensure_ascii=False))
     return destination
 
 

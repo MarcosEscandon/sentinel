@@ -31,10 +31,14 @@ From the project root (`C:\Users\marco\Mine\sentinel`):
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -e ".[dev,signing,hardening,service,realtime]"
+pip install --require-hashes -r requirements.lock
+pip install -e . --no-deps
 ```
 
-`dev` and `hardening` cover tests and `regex` with a timeout; `signing` adds the
+The lockfile pins every declared extra with SHA-256 hashes (including
+`packaging`, `yara` and `pe`), so the build uses the same versions as CI. Regenerate
+it with `pip-compile --allow-unsafe --generate-hashes --extra ...` if a
+dependency changes. `dev` and `hardening` cover tests and `regex` with a timeout; `signing` adds the
 preferred Ed25519 backend, while verification also works with the standard
 library. `service` and `realtime` add Windows service management and `watchdog`;
 the monitor also works without them using polling or the native
