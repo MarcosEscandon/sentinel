@@ -154,7 +154,11 @@ specified, it is selected automatically). The native backend does not FOLLOW
 reparse points: it watches directories with `ReadDirectoryChangesW` and, if
 given specific files, watches them by polling. Notifications run in a daemon
 thread so that they do not block the scan; `--notify none` is the recommended
-option when running as a service.
+option when running as a service. `--max-pending N` caps the number of paths
+waiting for analysis (default 4096): once the cap is reached, new events are
+dropped and a `realtime.error` event is written instead of growing memory
+without limit. The Windows service accepts the same value as `max_pending` in
+`service.json`.
 
 To install the Windows service (requires administrator):
 
@@ -301,10 +305,11 @@ the scope for an independent review is in `docs/EXTERNAL_AUDIT_SCOPE.md`.
 `sentinel integrity build/verify` generates and checks a SHA-256 manifest.
 `verify` distinguishes `missing`, `modified` and `added`, and with `--public-key`
 it also validates the manifest's Ed25519 signature. Static analysis with
-`python -m bandit -r sentinel -x tests` finished with **0 warnings** (6026 lines
+`python -m bandit -r sentinel -x tests` finished with **0 warnings** (6615 lines
 analyzed; details in `docs/bandit-results.json`) and dependency analysis with
-`pip-audit` over the declared extras found **0 vulnerabilities** in 24 packages
-(`docs/pip-audit-results.json`). The PyInstaller build generates and packages
+`pip-audit -r requirements.lock` found **0 vulnerabilities** in 27 locked packages
+(`docs/pip-audit-results.json`). These figures are regenerated whenever the
+locked dependency set changes. The PyInstaller build generates and packages
 `manifest.json` (and its signature if `SENTINEL_PRIVATE_KEY` is set) inside
 `sentinel/data`. In an onedir build (`-OneFile:$false`) it can be verified with:
 
@@ -374,8 +379,9 @@ attestation.
 ## Building (Windows x64)
 
 ```powershell
-pip install -e ".[packaging]"
-.\packaging\get-signtool.ps1          # optional: portable signtool, no admin required
+python -m pip install --require-hashes -r requirements.lock
+python -m pip install -e . --no-deps
+.\packaging\get-signtool.ps1          # optional: portable signtool, hash-verified, no admin required
 .\packaging\build.ps1 -Console        # dist\sentinel.exe
 .\packaging\build.ps1 -Sign           # sign with signtool + timestamp
 ```

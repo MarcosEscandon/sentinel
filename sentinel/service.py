@@ -164,6 +164,7 @@ def build_monitor(home: str | Path) -> Any:
         logger=AuditLogger(root / "audit.jsonl"),
         allowlist=AllowList.for_self([root, Path(__file__).parent.parent]),
         poll_interval=float(config_data.get("poll_interval", 2.0)),
+        max_pending=int(config_data["max_pending"]) if config_data.get("max_pending") else None,
     )
 
 

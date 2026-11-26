@@ -95,7 +95,8 @@ registration assessment exists yet (SN-12).
 | Backup / recovery | A1.2, A1.3 | A.8.13, A.8.14 | PII availability | PSI continuity | Partial (`.bak` on update/manifest; no disaster recovery plan) |
 | Incident response | CC7.3–CC7.5 | A.5.24–A.5.28 | Breach notification | Ley 25.326 art. 23-25; Res. 44/2023 | Partial (`SECURITY.md` disclosure; no internal IR runbook) |
 | Data retention / deletion | P4, P5 | A.5.34, A.8.10 | Retention & deletion | Ley 25.326 art. 9, 27 | Partial (30-day audit/report/quarantine/history helpers; no registry of erasure requests) |
-| Third parties / supply chain | CC9.2 | A.5.19, A.8.30 | Processor controls | PSI supply chain | Partial (feed terms review pending, SN-07; unsigned signtool download, SN-11) |
+| Third parties / supply chain | CC9.2 | A.5.19, A.8.30 | Processor controls | PSI supply chain | Partial (feed terms review pending, SN-07; signtool download is hash-pinned, SN-11) |
+| Availability / backpressure | A1.1 | A.8.6 | Processing integrity | PSI continuity | Met (bounded pending set with audited drops, SN-08) |
 
 ---
 
@@ -110,10 +111,10 @@ registration assessment exists yet (SN-12).
 | SN-05 | P1 | Unpinned dependencies and generated audit requirements in CI. | **Done** — `requirements.lock` with hashes, `--require-hashes` install, `pip-audit` on the lock. |
 | SN-06 | P1 | No vulnerability disclosure policy. | **Done** — `SECURITY.md`. |
 | SN-07 | P1 | IOC feed terms/licenses and redistribution rights not reviewed. | Human/legal sign-off before redistributing feeds. |
-| SN-08 | P1 | Real-time pending queue is unbounded under sustained events. | Bounded buffer or backpressure. |
+| SN-08 | P1 | Real-time pending queue is unbounded under sustained events. | **Done** — `max_pending` (default 4096, CLI `--max-pending` and `service.json`) bounds the pending set; excess events are dropped with a rate-limited `realtime.error` audit event. |
 | SN-09 | P2 | No kernel filter, sandbox or execution prevention for macros. | Track `docs/KERNEL_FILTER_DESIGN.md`; treat as a design limitation. |
-| SN-10 | P2 | `EXTERNAL_AUDIT_SCOPE.md` cites stale evidence counts (127 tests, 6026 LOC). | Refresh evidence before any external audit. |
-| SN-11 | P2 | `packaging/get-signtool.ps1` downloads signtool without verifying a hash/signature. | Pin and verify the downloaded package. |
+| SN-10 | P2 | `EXTERNAL_AUDIT_SCOPE.md` cites stale evidence counts (127 tests, 6026 LOC). | **Done** — regenerated `bandit-results.json`/`pip-audit-results.json`; docs now report 158 tests, 6615 LOC and 27 locked packages. |
+| SN-11 | P2 | `packaging/get-signtool.ps1` downloads signtool without verifying a hash/signature. | **Done** — SHA-256 pins for the NuGet package and the extracted x64 binary, verified fail-closed before install; different versions require explicit pins. |
 | SN-12 | P2 | No PII inventory, privacy notice, data-subject process or ARC registration assessment. | Privacy review under Ley 25.326 before production deployment. |
 
 ---
@@ -138,6 +139,9 @@ icacls "$env:USERPROFILE\.sentinel"
 
 # Confirm generated state is not tracked by git
 git status --short
+
+# The portable signing tool is hash-verified before it is installed
+.\packaging\get-signtool.ps1
 ```
 
 Expected: all checks pass, no generated `audit.jsonl`, `history.db`,
@@ -156,6 +160,9 @@ signature.
 | 2026-11-26 | Added user-only ACLs and 30-day retention to audit logs, quarantine, history, reports, keys and manifests | `sentinel/security_fs.py`, `core/logging.py`, `core/quarantine.py`, `core/database.py`, `cli.py`, `service.py`, `integrity.py` |
 | 2026-11-26 | Fixed YARA 4.5 `StringMatch` compatibility exposed by the locked dependency set | `sentinel/engine/yara.py`, `tests/test_yara_compat.py` |
 | 2026-11-26 | Added framework mapping and gap register; updated threat model ACL note | `HARDENING.md`, `docs/THREAT_MODEL.md` |
+| 2026-11-26 | Bounded the real-time pending set with audited backpressure (SN-08) | `sentinel/realtime.py`, `sentinel/cli.py`, `sentinel/service.py`, `tests/test_realtime_backpressure.py` |
+| 2026-11-26 | Pin-and-verify the NuGet package and `signtool.exe` with SHA-256 (SN-11) | `packaging/get-signtool.ps1` |
+| 2026-11-26 | Refreshed stale evidence counts and regenerated analysis artifacts (SN-10) | `README.md`, `docs/EXTERNAL_AUDIT_SCOPE.md`, `docs/bandit-results.json`, `docs/pip-audit-results.json` |
 
 ---
 

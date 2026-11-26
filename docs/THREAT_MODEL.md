@@ -88,9 +88,11 @@ response.
 
 - **Kernel filter**: does not exist. `RealtimeMonitor` uses
   `ReadDirectoryChangesW`, `watchdog` or polling from user space. An attacker
-  with the same privilege can terminate the process, saturate the queue or act
-  before the *grace period* expires. There is no execution prevention. The
-  minifilter proposal is in `docs/KERNEL_FILTER_DESIGN.md`.
+  with the same privilege can terminate the process, flood the watcher with
+  events (excess paths are now dropped by `max_pending` backpressure, but
+  detection can still be delayed) or act before the *grace period* expires.
+  There is no execution prevention. The minifilter proposal is in
+  `docs/KERNEL_FILTER_DESIGN.md`.
 - **Authenticode**: PE signatures are not checked. A binary signed by a
   legitimate or stolen entity is analyzed like any other file; there are no
   trusted publisher lists or reputation.

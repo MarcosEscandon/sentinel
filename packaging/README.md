@@ -21,7 +21,11 @@ Files:
   `.\packaging\get-signtool.ps1`) and an **EV or OV** code-signing certificate
   installed in the Windows `CurrentUser\My` store (on a token/HSM for EV).
   `get-signtool.ps1` does not need administrator privileges: it extracts the
-  binary from the official NuGet package to `packaging\tools\signtool.exe`.
+  binary from the official NuGet package to `packaging\tools\signtool.exe`. It
+  verifies the SHA-256 of both the downloaded package and the extracted x64
+  binary before installing them (fail-closed). Changing `-Version` requires new
+  `-PackageSha256`/`-ToolSha256` pins or an explicit `-SkipHashCheck`, which is
+  only for local experiments and never for release builds.
 
 ## 1. Install dependencies
 

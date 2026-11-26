@@ -229,6 +229,12 @@ def build_parser() -> argparse.ArgumentParser:
     monitor.add_argument("--poll-interval", type=float, default=2.0)
     monitor.add_argument("--grace-period", type=float, default=0.5)
     monitor.add_argument(
+        "--max-pending",
+        type=int,
+        default=None,
+        help="Maximum paths waiting for analysis (default: 4096).",
+    )
+    monitor.add_argument(
         "--backend",
         choices=("native", "watchdog", "polling"),
         default=None,
@@ -726,6 +732,7 @@ def cmd_monitor(args: argparse.Namespace, colors: Colors, logger: AuditLogger) -
         poll_interval=args.poll_interval,
         grace_period=args.grace_period,
         backend=args.backend,
+        max_pending=args.max_pending,
     )
     logger.emit(
         "realtime.start",

@@ -75,10 +75,10 @@ Questions the audit should answer:
 ## 6. Evidence package to deliver
 
 - Clean repository with an effective `.gitignore`.
-- `python -m pytest -q` → 127 tests passing.
+- `python -m pytest -q` → 158 tests passing.
 - `python -m ruff check .` → no warnings.
 - `python -m bandit -r sentinel -x tests` → 0 warnings; `docs/bandit-results.json`.
-- `pip-audit` over the extras → 0 vulnerabilities;
+- `pip-audit -r requirements.lock` → 0 vulnerabilities in 27 locked packages;
   `docs/pip-audit-results.json`.
 - `sentinel selftest` and `sentinel audit` → 100/100.
 - Recorded E2E run: EICAR → hash and content → quarantine → `verify` →

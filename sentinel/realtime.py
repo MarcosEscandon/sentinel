@@ -57,6 +57,10 @@ _WATCHED_ACTIONS = frozenset(
     {_FILE_ACTION_ADDED, _FILE_ACTION_MODIFIED, _FILE_ACTION_RENAMED_NEW_NAME}
 )
 _NATIVE_BUFFER_SIZE = 64 * 1024
+# Bound the set of paths waiting for their grace period: an event flood must
+# not exhaust memory. Extra events are dropped (backpressure) and reported.
+DEFAULT_MAX_PENDING = 4096
+_OVERFLOW_LOG_INTERVAL = 30.0
 _NATIVE_WAIT_MS = 200
 _ERROR_OPERATION_ABORTED = 995
 _ERROR_INSUFFICIENT_BUFFER = 122
@@ -433,11 +437,14 @@ class RealtimeMonitor:
         poll_interval: float = 2.0,
         grace_period: float = 0.5,
         backend: str | None = None,
+        max_pending: int | None = None,
     ) -> None:
         if poll_interval <= 0:
             raise ValueError("poll_interval must be positive")
         if grace_period < 0:
             raise ValueError("grace_period cannot be negative")
+        if max_pending is not None and max_pending < 1:
+            raise ValueError("max_pending must be >= 1")
         backends = available_backends()
         if backend is not None and backend not in backends:
             raise ValueError(
@@ -453,6 +460,7 @@ class RealtimeMonitor:
         self.on_finding = on_finding
         self.poll_interval = float(poll_interval)
         self.grace_period = float(grace_period)
+        self.max_pending = DEFAULT_MAX_PENDING if max_pending is None else int(max_pending)
         self._backend = backend if backend is not None else backends[0]
 
         # A single scan thread, no link following, and hashing always enabled.
@@ -465,8 +473,12 @@ class RealtimeMonitor:
         )
 
         self._excluded = frozenset(str(item).lower() for item in self.config.exclude_dirs)
-        self._queue: queue.Queue[str] = queue.Queue()
+        # The queue is only a wake-up signal; _pending holds the real state.
+        # Both are bounded so an event flood cannot grow without limit.
+        self._queue: queue.Queue[str] = queue.Queue(maxsize=max(64, self.max_pending))
         self._pending: dict[str, float] = {}
+        self._dropped_events = 0
+        self._last_overflow_log = 0.0
         self._in_progress: set[str] = set()
         self._snapshot: dict[str, tuple[int, int]] = {}
         self._last_poll = 0.0
@@ -528,7 +540,12 @@ class RealtimeMonitor:
             self._observer = None
             self._native_watchers.clear()
             self._pending.clear()
-        self._queue.put("")  # Wake the thread if it is waiting on the queue.
+        # Wake the worker if it is waiting; _next_timeout() also bounds the wait,
+        # so a full queue can never block shutdown.
+        try:
+            self._queue.put_nowait("")
+        except queue.Full:
+            pass
         for watcher in watchers:
             watcher.request_stop()
         deadline = time.monotonic() + max(0.0, timeout)
@@ -679,7 +696,12 @@ class RealtimeMonitor:
                     self._in_progress.discard(key)
 
     def _enqueue(self, path: str | Path) -> None:
-        """Schedule a path after the grace period, merging repeated events."""
+        """Schedule a path after the grace period, merging repeated events.
+
+        When ``max_pending`` is reached, new events are dropped instead of
+        growing the pending set. This is explicit backpressure: the monitor
+        reports the drop and keeps analyzing the paths it already accepted.
+        """
         if self._stop_event.is_set():
             return
         candidate = Path(path)
@@ -688,11 +710,34 @@ class RealtimeMonitor:
         if self.allowlist is not None and self.allowlist.allows_path(candidate):
             return
         key = str(candidate)
+        dropped_notice = 0
+        dropped = False
+        now = time.monotonic()
         with self._state_lock:
             if key in self._in_progress:
                 return
-            self._pending[key] = time.monotonic() + self.grace_period
-        self._queue.put(key)
+            if key not in self._pending and len(self._pending) >= self.max_pending:
+                dropped = True
+                self._dropped_events += 1
+                if now - self._last_overflow_log >= _OVERFLOW_LOG_INTERVAL:
+                    self._last_overflow_log = now
+                    dropped_notice = self._dropped_events
+            else:
+                self._pending[key] = now + self.grace_period
+        if dropped:
+            if dropped_notice:
+                self._emit_error(
+                    "queue",
+                    f"pending limit {self.max_pending} reached; "
+                    f"dropped {dropped_notice} event(s) since the last notice",
+                )
+            return
+        try:
+            self._queue.put_nowait(key)
+        except queue.Full:
+            # _next_timeout() wakes the worker for due paths even if the
+            # wake-up signal was dropped.
+            pass
 
     def _build_snapshot(self) -> dict[str, tuple[int, int]]:
         """Record ``(size, mtime)`` of the currently watched files."""
